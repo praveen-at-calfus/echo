@@ -97,11 +97,22 @@ order_value?  refund_amount?  order_id?  customer_id?  language
 
 **Stage 0 handling (before any LLM cost):**
 - **Too short** (< 5 chars) → reject with `422`.
-- **Too long** (> 2,000 tokens) → truncate + `truncated: true` flag.
+- **Too long** (over the token budget) → an LLM **condense** pass that keeps every concrete complaint, number, product, and request while dropping filler (never a blind truncation, which would cut the actionable tail); flagged `condensed: true`. The **raw text is always preserved immutably** — only the condensed copy is fed to the classifier. Runs `temperature=0` + cached; triggers only for rare over-long items.
 - **Spam / gibberish** → flagged.
 - **Non-English** → language detected, tagged, analyzed in place.
 - **Near-duplicates** → flagged `duplicate_of` (kept, not dropped — duplicate volume is signal).
 - **Off-topic / sarcasm** → falls through to the classifier's reject-option (`Other/Unclear`) rather than being force-labeled.
+
+---
+
+## Data & datasets
+
+echo is built on the **Olist Brazilian E-Commerce** public dataset (`olistbr/brazilian-ecommerce`, CC BY-NC) — a real e-commerce corpus that links orders, item prices, freight, payments, customers, and delivery dates.
+
+- **Reviews — real.** Olist ships real customer reviews (`review_score` 1–5 + free-text comment), used directly as the `review` source. Because each review joins back to its order, echo inherits real **money and fulfillment fields** (order value, freight, delivery timing, customer id) — so the corpus reaches **money tier T2/T3** with genuine dollars, not placeholders.
+- **Tickets & surveys — synthesized on Olist.** Olist has no support tickets or NPS/CSAT surveys, so echo generates them **against real Olist orders / products / customers / delivery data** — e.g. a synthesized ticket references an actual late or cancelled Olist order; a survey attaches to a real customer's order history. This keeps the whole corpus coherent (same products, same money, same customers) and preserves the source distinctions: **tickets are NL-only (no score); surveys carry a score.**
+
+**Honesty note:** only reviews are real feedback; tickets and surveys are synthetic and flagged as such. Grounding the synthesis in real order data (rather than inventing from scratch) keeps sentiment, urgency, and money plausibly consistent with the real distribution.
 
 ---
 
@@ -203,6 +214,8 @@ Impacts aggregate to **category impact** and **theme impact**.
 | T2 | + order value / AOV | Direct Exposure in real $ |
 | T3 | + refund amount / status / customer | Precise exposure + Retention Risk model |
 
+**This is standard practice, not invention.** The method is textbook **Voice-of-Customer (VoC) / CX economics**. Direct Exposure is ordinary operational **cost-to-serve** (contact cost per ticket, refund/chargeback rates, cart-abandonment GMV). Retention Risk is the industry **"revenue at risk"** metric — `customers at risk × customer lifetime value (CLV/LTV) × churn probability` — the same model enterprise platforms (Qualtrics XM, Medallia) compute, often refined with **driver analysis** (which factors statistically predict churn). The one honest simplification: where those platforms calibrate `churn_uplift` from historical churn data (e.g. survival analysis), echo uses transparent, documented assumptions with a sensitivity range — the correct call absent longitudinal data, and defensible precisely because it's labeled as modeled.
+
 ---
 
 ## Weekly summary contract
@@ -244,7 +257,7 @@ Target: readable aloud in under 90 seconds, every number traceable to SQL. Examp
 ## Validation approach
 
 - **Gold set:** 40 hand-labeled items, **stratified across the three sources**, for a category confusion matrix. (Small by design — its statistical thinness is acknowledged, and silver labels are the scale answer.)
-- **Silver labels:** review/survey scores auto-label thousands of items (≤2 → negative, ≥4 → positive) to validate LLM sentiment *at scale* — "validated against thousands of real ratings," not just 40 samples. (Tickets have no score, so they're validated via the gold set only.)
+- **Silver labels:** **real Olist review scores** auto-label thousands of items (≤2 → negative, ≥4 → positive) to validate LLM sentiment *at scale* — "validated against thousands of real ratings," not just 40 samples. (Synthetic survey scores can be checked the same way but aren't independent ground truth; tickets have no score → gold set only.)
 - **Sentiment cross-check:** live disagreement rate between LLM sentiment and `source_score` is tracked as a reliability metric.
 - **Consistency test:** fixed inputs run twice must produce equivalent output (guaranteed by the analysis cache).
 
