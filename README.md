@@ -114,6 +114,16 @@ echo is built on the **Olist Brazilian E-Commerce** public dataset (`olistbr/bra
 
 **Honesty note:** only reviews are real feedback; tickets and surveys are synthetic and flagged as such. Grounding the synthesis in real order data (rather than inventing from scratch) keeps sentiment, urgency, and money plausibly consistent with the real distribution.
 
+**Real-data characteristics (measured on the Olist tables):**
+- **Language — Brazilian Portuguese.** echo **analyzes it in place**: the LLM reads Portuguese and emits **English** category labels + rationale (tagged `language: pt`). No translation step → no translation drift. The gold set is hand-labeled from the Portuguese text.
+- **Text coverage — ~41%.** Only ~41k of the 99,224 reviews carry a comment; the rest are score-only. The ~41k with text are the classification corpus; score-only reviews still power silver-label sentiment validation and money aggregates.
+- **Class skew — positive.** Scores run 5★ 57% · 4★ 19% · 3★ 8% · 2★ 3% · 1★ 12%. The 40-item gold set is therefore **balanced by score/category deliberately**, not sampled at random (a random sample would be mostly 5★).
+- **Fulfillment signals for synthesis.** Canceled (625) and shipped-but-not-delivered (1,107) orders, plus `delivered_customer_date` vs `estimated_delivery_date`, are the real basis for synthesized Shipping/Billing tickets.
+
+**Join path (enables the money engine):** `reviews → order_id → orders → customer_id → customers` (de-dup via `customer_unique_id`); `orders → order_items` (`price`, `freight_value`) and `→ order_payments` (`payment_value`) for real dollars; `→ products` for category. Refunds aren't a native field — inferred from canceled orders (`payment_value`).
+
+**Getting the data:** download the Olist dataset from Kaggle (`olistbr/brazilian-ecommerce`) into `data/`, which is gitignored (~246 MB, CC BY-NC — not redistributed via this repo).
+
 ---
 
 ## Taxonomy → owner → money mechanic

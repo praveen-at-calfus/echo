@@ -1,0 +1,22 @@
+# Data — Olist dataset (download from Kaggle; ~246 MB, CC BY-NC, not redistributed here)
+data/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
