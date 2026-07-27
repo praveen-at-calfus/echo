@@ -176,6 +176,14 @@ URGENCY_FLOOR_PATTERNS = (
 )
 
 # --------------------------------------------------------------------------- #
+# Embeddings stage (semantic vectors for themes + RAG retrieval)
+# --------------------------------------------------------------------------- #
+EMBED_MODEL = "text-embedding-3-small"
+EMBED_DIM = 1536          # native dimensionality of text-embedding-3-small
+EMBED_BATCH = 256         # inputs per OpenAI embeddings request
+EMBED_HNSW = {"m": 16, "ef_construction": 64}  # pgvector HNSW build params (cosine)
+
+# --------------------------------------------------------------------------- #
 # Money-weighting engine (pure SQL/Python — the LLM never emits a figure)
 # --------------------------------------------------------------------------- #
 # Money is in BRL (the corpus is real Brazilian Olist data). Two clearly-separated

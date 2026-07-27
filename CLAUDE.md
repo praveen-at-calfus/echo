@@ -12,9 +12,10 @@ echo is **AI customer-feedback intelligence for e-commerce**: it ingests messy c
 
 ## Current state (keep this section honest as you build)
 
-- **Built:** the offline **corpus builder** (`src/echo/corpus/`), **Postgres persistence** (`src/echo/db/`), the **classify** stage (`src/echo/classify/`), and the **money engine** (`src/echo/money/`). A 15,000-item corpus is loaded into the local `echo` DB; all 15,000 items are classified (`analysis` full, for `gpt-4o-mini`/`classify_v1`) and `llm_calls` is populated.
+- **Built:** the offline **corpus builder** (`src/echo/corpus/`), **Postgres persistence** (`src/echo/db/`), the **classify** stage (`src/echo/classify/`), the **money engine** (`src/echo/money/`), and the **embeddings** stage (`src/echo/embed/` + `src/echo/db/vector.py`). A 15,000-item corpus is loaded; all 15,000 items are classified (`analysis` full, `gpt-4o-mini`/`classify_v1`) and all 14,765 texted items are embedded (`embeddings` table, `text-embedding-3-small`, 1536-d, HNSW cosine index).
 - **Money engine** is pure SQL/Python (no table, no LLM): `python -m echo.money [--week|--demo-week]` reports per-category Direct Exposure (deterministic) + modeled Retention Risk (low/base/high) + coverage tier (currently T3). Call `money.engine.summary()` from downstream stages.
-- **Not yet built (the MVP in progress):** `embed`, `themes`, `summary`, `rag`, `api`, `frontend`. `embed`/`themes`/`rag` are blocked on the **pgvector** prerequisite (not yet installed locally — see plan step 0). The `themes`, `theme_members`, `weekly_summary` tables exist but are empty.
+- **pgvector is installed** on the local `postgresql@16` (built from source against pg16 — the brew bottle only shipped pg17/18 files). `db/vector.py::create_all()` runs `ensure_extension()` before DDL; `embed.nearest()` does cosine top-k.
+- **Not yet built (the MVP in progress):** `themes`, `summary`, `rag`, `api`, `frontend`. The `themes`, `theme_members`, `weekly_summary` tables exist but are empty.
 
 ## Setup & commands
 

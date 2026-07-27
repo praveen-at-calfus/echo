@@ -28,6 +28,8 @@ corpus = [
 ]
 # PostgreSQL loader (python -m echo.db)
 db = ["sqlalchemy>=2.0", "psycopg[binary]>=3.1"]
+# Pipeline stages that do vector math (embed, themes clustering).
+pipeline = ["pgvector>=0.3", "numpy>=1.26", "scikit-learn>=1.4"]
 dev = ["ruff>=0.5", "pytest>=8"]
 
 [tool.setuptools.packages.find]
