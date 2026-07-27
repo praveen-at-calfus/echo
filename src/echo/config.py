@@ -235,6 +235,14 @@ CATEGORY_OWNER: dict[str, str] = {
 # Demo week for weekly themes/summary (the busiest week in the Olist span).
 DEMO_WEEK = "2018-03-05"
 
+# --------------------------------------------------------------------------- #
+# Weekly summary (SQL computes every number; the LLM only narrates)
+# --------------------------------------------------------------------------- #
+SUMMARY_PROMPT_VERSION = "summary_v1"
+SUMMARY_TEMPERATURE = 0.3          # a little warmth for prose; numbers are injected
+SUMMARY_TOP_DRIVERS = 5            # top-N drivers (themes fallback: categories by $ at risk)
+SUMMARY_URGENT_LIMIT = 10          # urgent items snapshotted into the summary
+
 
 class Settings(BaseSettings):
     """Environment-driven settings (``.env`` + real env vars)."""

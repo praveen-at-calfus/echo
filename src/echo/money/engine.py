@@ -165,6 +165,42 @@ def retention_by_category(engine=None, week: str | None = None,
     return out
 
 
+def urgent_items(engine=None, week: str | None = None, limit: int = 20,
+                 model: str | None = None, pv: str | None = None) -> list[dict]:
+    """Urgent queue (urgency >= URGENCY_FLOOR) ranked by per-item Direct Exposure.
+
+    Reused by the weekly summary and the API's ``/urgent`` endpoint.
+    """
+    eng = _engine(engine)
+    model, pv = _version(model, pv)
+    comp = mechanics.direct_components("a.category", "f.order_value", "f.refund_amount", "f.fulfillment_outcome")
+    exposure = " + ".join(f"({sql})" for sql in comp.values())
+    bounds = week_bounds(week)
+    wk = "AND f.created_at >= :wk_start AND f.created_at < :wk_end" if bounds else ""
+
+    sql = text(f"""
+        SELECT f.item_id, a.category, a.sentiment, a.urgency, f.source_type,
+               COALESCE(f.order_value,0) AS order_value,
+               ({exposure}) AS exposure,
+               left(f.text, 160) AS snippet
+        FROM analysis a JOIN feedback f ON f.item_id = a.item_id
+        WHERE a.model_name = :model AND a.prompt_version = :pv
+              AND a.urgency >= :floor {wk}
+        ORDER BY ({exposure}) DESC, f.order_value DESC NULLS LAST, a.urgency DESC
+        LIMIT :limit
+    """)
+    params = {"model": model, "pv": pv, "floor": config.URGENCY_FLOOR, "limit": limit}
+    if bounds:
+        params["wk_start"], params["wk_end"] = bounds
+    with eng.connect() as c:
+        rows = [dict(r._mapping) for r in c.execute(sql, params)]
+    for r in rows:
+        r["order_value"] = round(float(r["order_value"]), 2)
+        r["exposure"] = round(float(r["exposure"]), 2)
+        r["owner"] = config.CATEGORY_OWNER.get(r["category"], "Triage")
+    return rows
+
+
 def summary(engine=None, week: str | None = None,
             model: str | None = None, pv: str | None = None) -> dict:
     """Full money report: totals, per-category exposure, modeled retention range, tier."""
