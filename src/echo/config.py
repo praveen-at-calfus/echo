@@ -238,10 +238,27 @@ DEMO_WEEK = "2018-03-05"
 # --------------------------------------------------------------------------- #
 # Weekly summary (SQL computes every number; the LLM only narrates)
 # --------------------------------------------------------------------------- #
-SUMMARY_PROMPT_VERSION = "summary_v1"
+SUMMARY_PROMPT_VERSION = "summary_v2"
 SUMMARY_TEMPERATURE = 0.3          # a little warmth for prose; numbers are injected
 SUMMARY_TOP_DRIVERS = 5            # top-N drivers (themes fallback: categories by $ at risk)
 SUMMARY_URGENT_LIMIT = 10          # urgent items snapshotted into the summary
+
+# --------------------------------------------------------------------------- #
+# Themes stage (weekly clustering of embeddings; LLM labels, SQL ranks)
+# --------------------------------------------------------------------------- #
+THEME_PROMPT_VERSION = "theme_v1"
+THEME_TEMPERATURE = 0.2
+CLUSTER_DISTANCE_THRESHOLD = 0.40  # agglomerative cosine distance cut (lower = tighter)
+MIN_CLUSTER_SIZE = 3               # ignore clusters smaller than this
+TOP_THEMES = 10                    # label + keep only the top-N clusters by revenue-at-risk
+THEME_SENTIMENTS = ("negative", "neutral")  # cluster actionable items (skip praise/positive)
+THEME_LABEL_QUOTES = 6             # representative quotes shown to the labeller per cluster
+THEME_LABEL_RETRIES = 2            # generic-label validator retries
+# Vague labels the validator rejects (retry with stronger instruction).
+THEME_BANNED_LABEL_TERMS = (
+    "customer issue", "various", "general", "miscellaneous", "other", "problem with",
+    "feedback", "complaint", "issues", "concerns", "multiple", "assorted",
+)
 
 
 class Settings(BaseSettings):

@@ -45,6 +45,8 @@ HARD RULES:
   echo attaches those from its own data. Refer to drivers by their category name.
 - Each of the 3 actions must target one of the provided top-driver categories and say
   concretely what to do (the lever), not restate the number.
+- Prefer covering DIFFERENT drivers across the 3 actions when the data supports it; only
+  double up on one category if it genuinely dominates the week's risk.
 - Be specific and businesslike; no fluff. Readable aloud in under 90 seconds.
 - The feedback is Brazilian; quotes stay in Portuguese, your narration is in English."""
 

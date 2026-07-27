@@ -201,6 +201,58 @@ def urgent_items(engine=None, week: str | None = None, limit: int = 20,
     return rows
 
 
+def exposure_for_items(item_ids: list[str], engine=None,
+                       model: str | None = None, pv: str | None = None) -> dict:
+    """Direct Exposure + modeled Retention Risk for an arbitrary set of items (a cluster).
+
+    Same mechanics as the per-category breakdown, scoped to ``item_ids``: Direct
+    Exposure sums the deterministic components over negatives; Retention de-dupes to
+    one at-risk customer on their worst issue. Returns revenue_at_risk = direct + base.
+    """
+    if not item_ids:
+        return {"n": 0, "n_neg": 0, "direct_exposure": 0.0,
+                "retention": {"low": 0.0, "base": 0.0, "high": 0.0}, "revenue_at_risk": 0.0}
+    eng = _engine(engine)
+    model, pv = _version(model, pv)
+    comp = mechanics.direct_components("a.category", "f.order_value", "f.refund_amount", "f.fulfillment_outcome")
+    exposure = " + ".join(f"({sql})" for sql in comp.values())
+    prop = mechanics.propensity_sql("category")  # read from the `base` CTE's output column
+
+    sql = text(f"""
+        WITH base AS (
+          SELECT a.category, a.sentiment, a.urgency, f.order_value, f.customer_unique_id,
+                 ({exposure}) AS exposure
+          FROM analysis a JOIN feedback f ON f.item_id = a.item_id
+          WHERE a.model_name = :model AND a.prompt_version = :pv AND f.item_id = ANY(:ids)
+        ),
+        direct AS (
+          SELECT count(*) AS n,
+                 count(*) FILTER (WHERE sentiment='negative') AS n_neg,
+                 COALESCE(sum(exposure) FILTER (WHERE sentiment='negative'),0) AS d
+          FROM base
+        ),
+        worst AS (
+          SELECT DISTINCT ON (customer_unique_id)
+                 COALESCE(order_value * :annual, :flat) AS cv, ({prop}) AS propensity
+          FROM base
+          WHERE sentiment='negative' AND customer_unique_id IS NOT NULL
+          ORDER BY customer_unique_id, urgency DESC, order_value DESC NULLS LAST
+        ),
+        ret AS (SELECT COALESCE(sum(cv * propensity),0) AS unit FROM worst)
+        SELECT direct.n, direct.n_neg, direct.d, ret.unit FROM direct, ret
+    """)
+    params = {"model": model, "pv": pv, "ids": list(item_ids),
+              "annual": config.EXPECTED_ANNUAL_ORDERS, "flat": config.FLAT_CUSTOMER_VALUE}
+    with eng.connect() as c:
+        r = c.execute(sql, params).one()
+    up = config.CHURN_UPLIFT
+    unit = float(r.unit)
+    direct = round(float(r.d), 2)
+    retention = {k: round(unit * up[k], 2) for k in ("low", "base", "high")}
+    return {"n": int(r.n), "n_neg": int(r.n_neg), "direct_exposure": direct,
+            "retention": retention, "revenue_at_risk": round(direct + retention["base"], 2)}
+
+
 def summary(engine=None, week: str | None = None,
             model: str | None = None, pv: str | None = None) -> dict:
     """Full money report: totals, per-category exposure, modeled retention range, tier."""

@@ -120,17 +120,20 @@ def run(week: str | None = None) -> dict:
         WeeklyNarrative, include_raw=True)
     narrative, in_t, out_t, lat = _invoke(structured, facts)
 
-    # 4) enrich each action with the SQL dollar figure + owner (LLM supplied neither)
-    by_cat = {d["category"]: d for d in drivers}
+    # 4) enrich each action with the SQL dollar figure + owner (LLM supplied neither).
+    # Use the authoritative per-CATEGORY money (a category may span several theme drivers),
+    # so the action's $ is the whole category's exposure, not one theme's slice.
+    cat_money = {c["category"]: c for c in money.summary(eng, week=week)["categories"]}
     actions = []
     for a in narrative.actions:
-        d = by_cat.get(a.category) or (drivers[0] if drivers else None)
+        cm = cat_money.get(a.category, {})
+        direct = cm.get("direct_exposure", 0.0)
+        base = cm.get("retention", {}).get("base", 0.0)
         actions.append({
             "category": a.category, "recommendation": a.recommendation,
-            "owner": (d or {}).get("owner") or config.CATEGORY_OWNER.get(a.category, "Triage"),
-            "direct_exposure": (d or {}).get("direct_exposure", 0.0),
-            "retention_base": (d or {}).get("retention", {}).get("base", 0.0),
-            "revenue_at_risk": (d or {}).get("revenue_at_risk", 0.0),
+            "owner": config.CATEGORY_OWNER.get(a.category, "Triage"),
+            "direct_exposure": direct, "retention_base": base,
+            "revenue_at_risk": round(direct + base, 2),
         })
 
     # 5) write the row (upsert on week) + audit
