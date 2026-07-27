@@ -156,6 +156,25 @@ GOLD_RESERVE = 20
 GEN_TEMPERATURE = 0.8
 GEN_WORKERS = 8  # concurrent LLM calls when warming the cache
 
+# --------------------------------------------------------------------------- #
+# Classify stage (real-time per item: category + sentiment + urgency + rationale)
+# --------------------------------------------------------------------------- #
+CLASSIFY_PROMPT_VERSION = "classify_v1"
+CLASSIFY_WORKERS = 12
+CLASSIFY_TEMPERATURE = 0.0  # deterministic classification
+
+# Deterministic urgency floor: high-stakes phrasing forces urgency >= URGENCY_FLOOR,
+# removing model subjectivity on the costliest items. PT-first, kept conservative;
+# OR'd with the pre-computed feedback.urgency_floor_signal flag.
+URGENCY_FLOOR = 4
+URGENCY_FLOOR_PATTERNS = (
+    r"\bfraude\b",
+    r"cobrad[oa].{0,15}(dobro|duas vezes)",
+    r"cobran[çc]a.{0,8}(dobro|indevida)",
+    r"nunca cheg\w*",
+    r"paguei.{0,25}n[ãa]o.{0,8}receb",
+)
+
 
 class Settings(BaseSettings):
     """Environment-driven settings (``.env`` + real env vars)."""
