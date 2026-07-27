@@ -52,6 +52,33 @@ def _invoke(structured_llm, text: str):
             int(um.get("total_tokens", 0)), latency, (getattr(raw, "content", "") or ""))
 
 
+_LIVE_LLM = None
+
+
+def _live_llm():
+    """Lazily-built structured classifier reused across live (API) calls."""
+    global _LIVE_LLM
+    if _LIVE_LLM is None:
+        from langchain_openai import ChatOpenAI
+        _LIVE_LLM = ChatOpenAI(
+            model=config.settings.model, temperature=config.CLASSIFY_TEMPERATURE, seed=config.SEED,
+            api_key=config.settings.openai_api_key,
+        ).with_structured_output(Classification, include_raw=True)
+    return _LIVE_LLM
+
+
+def classify_text(text: str, floor_signal: bool | None = None) -> tuple[dict, dict]:
+    """Classify one item live (single LLM call + urgency floor). No DB writes.
+
+    Returns (analysis_dict, usage) — analysis has category/sentiment/urgency/rationale/floored.
+    """
+    parsed, in_t, out_t, tot_t, lat, raw = _invoke(_live_llm(), text)
+    urg, floored = apply_floor(parsed.urgency, text, floor_signal)
+    analysis = {"category": parsed.category, "sentiment": parsed.sentiment, "urgency": urg,
+                "rationale": parsed.rationale, "floored": floored}
+    return analysis, {"input_tokens": in_t, "output_tokens": out_t, "latency_ms": lat, "raw": raw}
+
+
 def _score_only_sentiment(score, scale):
     if scale == "nps_0_10":
         if score is not None and score <= config.NPS_NEG_MAX:

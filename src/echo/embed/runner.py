@@ -95,6 +95,22 @@ def run(limit: int | None = None) -> dict:
             "est_cost": round(cost, 4), "total_rows": int(total)}
 
 
+_CLIENT = None
+
+
+def _client():
+    global _CLIENT
+    if _CLIENT is None:
+        from openai import OpenAI
+        _CLIENT = OpenAI(api_key=config.settings.openai_api_key)
+    return _CLIENT
+
+
+def embed_texts(texts: list[str]) -> tuple[list[list[float]], int]:
+    """Embed a small batch live (API path). Returns (vectors, total_tokens)."""
+    return _embed_batch(_client(), list(texts))
+
+
 def nearest(engine, item_id: str, k: int = 5, model: str | None = None) -> list[dict]:
     """Cosine top-k neighbours of an item (excludes itself). For reuse + verification."""
     model = model or config.EMBED_MODEL
