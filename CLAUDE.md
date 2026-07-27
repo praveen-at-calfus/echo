@@ -12,8 +12,9 @@ echo is **AI customer-feedback intelligence for e-commerce**: it ingests messy c
 
 ## Current state (keep this section honest as you build)
 
-- **Built:** the offline **corpus builder** (`src/echo/corpus/`) and **Postgres persistence** (`src/echo/db/`). A 15,000-item feedback corpus is generated into `data/processed/` and loaded into the local Postgres database `echo`.
-- **Not yet built (the MVP in progress):** `classify`, `embed`, `money`, `themes`, `summary`, `rag`, `api`, `frontend`. The 8 DB tables exist; the 5 pipeline tables (`analysis`, `llm_calls`, `themes`, `theme_members`, `weekly_summary`) are still empty.
+- **Built:** the offline **corpus builder** (`src/echo/corpus/`), **Postgres persistence** (`src/echo/db/`), the **classify** stage (`src/echo/classify/`), and the **money engine** (`src/echo/money/`). A 15,000-item corpus is loaded into the local `echo` DB; all 15,000 items are classified (`analysis` full, for `gpt-4o-mini`/`classify_v1`) and `llm_calls` is populated.
+- **Money engine** is pure SQL/Python (no table, no LLM): `python -m echo.money [--week|--demo-week]` reports per-category Direct Exposure (deterministic) + modeled Retention Risk (low/base/high) + coverage tier (currently T3). Call `money.engine.summary()` from downstream stages.
+- **Not yet built (the MVP in progress):** `embed`, `themes`, `summary`, `rag`, `api`, `frontend`. `embed`/`themes`/`rag` are blocked on the **pgvector** prerequisite (not yet installed locally — see plan step 0). The `themes`, `theme_members`, `weekly_summary` tables exist but are empty.
 
 ## Setup & commands
 

@@ -175,6 +175,58 @@ URGENCY_FLOOR_PATTERNS = (
     r"paguei.{0,25}n[ãa]o.{0,8}receb",
 )
 
+# --------------------------------------------------------------------------- #
+# Money-weighting engine (pure SQL/Python — the LLM never emits a figure)
+# --------------------------------------------------------------------------- #
+# Money is in BRL (the corpus is real Brazilian Olist data). Two clearly-separated
+# figures: DIRECT EXPOSURE (deterministic, from real fields) and RETENTION RISK
+# (modeled, shown as a low/base/high range and always labeled "modeled estimate").
+
+# Item-impact ranking primitive: impact = severity_weight(urgency) * value * sentiment_mult
+# (value = order_value when present, else 1 -> degrades to volume x severity).
+SEVERITY_WEIGHT: dict[int, float] = {1: 0.1, 2: 0.3, 3: 0.6, 4: 1.0, 5: 1.5}
+SENTIMENT_MULT: dict[str, float] = {"negative": 1.0, "neutral": 0.4, "positive": 0.1}
+
+# Direct-exposure mechanics (deterministic, negatives only).
+WISMO_CONTACT_COST = 8.0        # cost of one "where is my order?" support contact
+RETURN_COST_FRACTION = 0.15     # reverse-logistics + restocking, as a fraction of order value
+
+# Retention-risk model: retention_risk = customer_value * churn_uplift * category_propensity,
+# de-duped to one at-risk customer counted once on their worst (highest-urgency) issue.
+CHURN_UPLIFT: dict[str, float] = {"low": 0.05, "base": 0.10, "high": 0.20}
+EXPECTED_ANNUAL_ORDERS = 2.5    # CLV proxy: customer_value = order_value * this ...
+FLAT_CUSTOMER_VALUE = 150.0     # ... else this flat assumed value (no order money field)
+# How strongly a negative in each category predicts churn (0..1). Documented assumption,
+# not calibrated from longitudinal data (echo has none) — hence the sensitivity range.
+CATEGORY_PROPENSITY: dict[str, float] = {
+    "Billing & Payment": 0.90,
+    "Shipping & Delivery": 0.70,
+    "Returns & Refunds": 0.65,
+    "Product Quality": 0.60,
+    "Customer Service": 0.65,
+    "Pricing & Value": 0.45,
+    "Website/App UX": 0.40,
+    "Availability & Selection": 0.35,
+    "Praise": 0.0,
+    "Other/Unclear": 0.0,
+}
+# Category -> owning team (README taxonomy table). Drives routing in themes/summary/API.
+CATEGORY_OWNER: dict[str, str] = {
+    "Product Quality": "Merchandising / QA",
+    "Shipping & Delivery": "Logistics / Fulfillment",
+    "Returns & Refunds": "Reverse-logistics / Finance ops",
+    "Billing & Payment": "Payments / Finance / Fraud",
+    "Pricing & Value": "Pricing / Merch / Marketing",
+    "Website/App UX": "Product / Engineering",
+    "Customer Service": "CX / Support ops",
+    "Availability & Selection": "Inventory / Buying",
+    "Praise": "Marketing / Advocacy",
+    "Other/Unclear": "Triage",
+}
+
+# Demo week for weekly themes/summary (the busiest week in the Olist span).
+DEMO_WEEK = "2018-03-05"
+
 
 class Settings(BaseSettings):
     """Environment-driven settings (``.env`` + real env vars)."""
