@@ -53,7 +53,7 @@ echo runs in two modes: **real-time** per feedback item (classify + embed on sub
    │                        │                                        │
    │   writes: analysis row (versioned) + llm_calls audit           │
    │                        ▼                                        │
-   │ 4. EMBED text → Milvus (vector + metadata)                     │
+   │ 4. EMBED text → pgvector (vector+metadata)                     │
    └──────────────┬─────────────────────────────────────────────────┘
                   ▼
    ┌──────────── WEEKLY BATCH ───────────────────────────────────────┐
@@ -69,7 +69,7 @@ echo runs in two modes: **real-time** per feedback item (classify + embed on sub
    └─────────────────────────────────────────────────────────────────┘
 ```
 
-If Milvus is unavailable, stages 0–3 still work — only theme extraction and RAG degrade. Graceful degradation is a first-class requirement.
+If the embeddings/vector index aren't available yet, stages 0–3 still work — only theme extraction and RAG degrade. Graceful degradation is a first-class requirement.
 
 ---
 
@@ -122,7 +122,7 @@ echo is built on the **Olist Brazilian E-Commerce** public dataset (`olistbr/bra
 
 **Join path (enables the money engine):** `reviews → order_id → orders → customer_id → customers` (de-dup via `customer_unique_id`); `orders → order_items` (`price`, `freight_value`) and `→ order_payments` (`payment_value`) for real dollars; `→ products` for category. Refunds aren't a native field — inferred from canceled orders (`payment_value`).
 
-**Getting the data:** download the Olist dataset from Kaggle (`olistbr/brazilian-ecommerce`) into `data/`, which is gitignored (~246 MB, CC BY-NC — not redistributed via this repo).
+**Getting the data:** download the Olist dataset from Kaggle (`olistbr/brazilian-ecommerce`) into `data/raw/` (the `data/` folder is gitignored — ~246 MB, CC BY-NC — not redistributed via this repo). Build outputs land in `data/processed/`; the LLM generation cache in `data/interim/`.
 
 ---
 
@@ -180,7 +180,7 @@ Single-label keeps scoring clean; when an item is genuinely multi-topic, the cla
 
 Weekly, echo turns individual feedback into recurring themes:
 
-1. Pull embeddings from Milvus.
+1. Pull embeddings from Postgres (pgvector).
 2. **Cluster** semantically similar items (cosine-threshold agglomerative / HDBSCAN).
 3. Keep clusters with **≥ 3 items**; report the **top 10 by revenue-at-risk** (not by raw count).
 4. An LLM **labels** each cluster in the format `<component>: <specific issue>` (e.g. *"Checkout: Apple Pay fails on iOS"*).
@@ -279,21 +279,25 @@ Target: readable aloud in under 90 seconds, every number traceable to SQL. Examp
 |---|---|
 | LLM | OpenAI API (chat completions, `temperature=0`, fixed `seed`) |
 | Orchestration | LangChain (LCEL chains, Pydantic structured output) |
-| Backend | FastAPI |
+| Backend | FastAPI — **backend container** (API + full pipeline) |
 | Relational DB | PostgreSQL (SQLAlchemy ORM + Alembic migrations) |
-| Vector DB | Milvus Standalone via Docker Compose (Milvus + etcd + MinIO) |
+| Vector search | **pgvector** — a PostgreSQL extension; embeddings live in the same DB (no separate vector service) |
 | Embeddings | OpenAI embeddings |
-| Dashboard | Streamlit (API client) |
+| Dashboard | Streamlit — **frontend container** (thin API client) |
 | Config/secrets | `.env` + `pydantic-settings` (`.env` gitignored, `.env.example` committed) |
-| Packaging | Docker Compose (multi-service: DB + vector stack + API + dashboard) |
+| Packaging | Docker — **exactly 2 containers: `backend` + `frontend`** (Postgres is an external/managed service, not shipped in an app image) |
 | Lint/format | ruff (PEP8) |
 
-Milvus + Docker Compose are chosen as **realistic production infra** — multi-service compose with `depends_on`, healthchecks, named volumes, and service-name networking (known trade-off: ~2–4 GB RAM for the vector stack).
+**Deployment = 2 containers.** The whole app ships as just two images:
+- **`backend`** — FastAPI serving the API and running the pipeline (ingest, classify, embed, themes, money engine, weekly summary, RAG).
+- **`frontend`** — the Streamlit dashboard, a thin client that talks only to the backend API.
+
+**Data lives outside the app containers.** PostgreSQL — with the **pgvector** extension — holds *both* the relational tables *and* the embeddings, so there is a single data store and **no Milvus/etcd/MinIO stack** to run. In production Postgres is a managed service; for local dev it's a local server (or a throwaway `postgres` container). Folding vectors into Postgres via pgvector is the deliberate simplification that keeps the app to two containers — chosen over a multi-service vector stack because one database is far easier to run, back up, and reason about at echo's scale.
 
 ### Data stores
 
-- **Postgres:** `feedback` (immutable raw) · `analysis` (versioned — stores `model_name` + `prompt_version`; re-running a new prompt writes a new row, never mutates raw data) · `llm_calls` (audit: input, output, latency, tokens) · `themes` · `weekly_summary`.
-- **Milvus:** embeddings + metadata for clustering and RAG retrieval.
+- **Postgres (relational):** `feedback` (immutable raw) · `analysis` (versioned — stores `model_name` + `prompt_version`; re-running a new prompt writes a new row, never mutates raw data) · `llm_calls` (audit: input, output, latency, tokens) · `themes` · `weekly_summary`.
+- **Postgres (pgvector):** feedback embeddings + metadata for clustering and RAG retrieval — the **same database**, queried by vector similarity.
 
 ---
 
@@ -301,7 +305,7 @@ Milvus + Docker Compose are chosen as **realistic production infra** — multi-s
 
 - Validate cheap things before expensive LLM calls; retry ×3 with exponential backoff on API errors, then a clean human-readable error.
 - Failed items are stored `status: pending` and re-processed later — an outage loses nothing.
-- Milvus down → classification still works; only themes/RAG report degraded.
+- Vector index unavailable (e.g. embeddings not built yet) → classification still works; only themes/RAG report degraded.
 - No hardcoded secrets (env only); ORM prevents SQL injection; all user input validated at the API boundary.
 
 ---
@@ -310,7 +314,7 @@ Milvus + Docker Compose are chosen as **realistic production infra** — multi-s
 
 An ad-hoc question box — *"What are customers saying about PDF invoices?"*:
 ```
-question → embed → retrieve top-k relevant feedback from Milvus
+question → embed → retrieve top-k relevant feedback from Postgres (pgvector)
         → LLM answers, grounded in retrieved snippets, citing feedback IDs
 ```
 Any **number** in the answer still comes from SQL, never the LLM — the anti-hallucination invariant holds even in the bonus. This is the flagship enhancement; core ships first.
@@ -321,4 +325,4 @@ Any **number** in the answer still comes from SQL, never the LLM — the anti-ha
 
 **Core (must ship):** ingest + normalize (3 sources, messy input) → classify (category/sentiment/urgency) → embed → themes → money engine → weekly summary → API → dashboard.
 
-**Bonus (never mixed into core scope):** RAG Q&A box (flagship), confidence score + human-review queue, pgvector comparison, full-app single-compose dockerization, prompt A/B evaluation harness, token-cost dashboard from the `llm_calls` log.
+**Bonus (never mixed into core scope):** RAG Q&A box (flagship), confidence score + human-review queue, prompt A/B evaluation harness, token-cost dashboard from the `llm_calls` log.

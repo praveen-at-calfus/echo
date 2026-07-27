@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "echo"
+version = "0.1.0"
+description = "AI customer-feedback intelligence for e-commerce"
+requires-python = ">=3.9"
+readme = "README.md"
+
+# Core runtime deps for the full system land here as later stages are built.
+dependencies = [
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+# Everything the offline corpus-builder / data-prep step needs.
+corpus = [
+    "pandas>=2.2",
+    "pyarrow>=16",
+    "openai>=1.40",
+    "langchain>=0.2",
+    "langchain-openai>=0.1",
+    "tenacity>=8.4",
+]
+# PostgreSQL loader (python -m echo.db)
+db = ["sqlalchemy>=2.0", "psycopg[binary]>=3.1"]
+dev = ["ruff>=0.5", "pytest>=8"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
+ignore = ["E501"]  # line length handled by formatter; long grounded strings are fine
