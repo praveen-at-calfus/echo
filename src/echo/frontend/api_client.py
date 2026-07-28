@@ -72,6 +72,11 @@ def weekly_summary(week: str | None = None) -> dict:
     return _get("/summary/weekly", week=week)
 
 
+@st.cache_data(ttl=60)
+def eval_gold() -> dict:
+    return _get("/eval/gold")
+
+
 def submit_feedback(text: str, source_type: str = "ticket",
                     source_score: float | None = None, source_scale: str | None = None) -> dict:
     """Live POST — never cached (writes data + costs a real LLM call)."""

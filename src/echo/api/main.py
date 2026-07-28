@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from echo.api import deps
 from echo.api.routers import ask, feedback, health, stats, summary, themes, urgent
+from echo.api.routers import eval as eval_router
 from echo.db import schema, vector
 
 
@@ -46,7 +47,8 @@ app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
 )
 
-for r in (health.router, stats.router, themes.router, urgent.router, summary.router, feedback.router, ask.router):
+for r in (health.router, stats.router, themes.router, urgent.router, summary.router,
+          feedback.router, ask.router, eval_router.router):
     app.include_router(r)
 
 
