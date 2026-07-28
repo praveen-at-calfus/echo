@@ -260,6 +260,13 @@ THEME_BANNED_LABEL_TERMS = (
     "feedback", "complaint", "issues", "concerns", "multiple", "assorted",
 )
 
+# --------------------------------------------------------------------------- #
+# RAG stage ("ask echo": embed question -> pgvector top-k -> grounded+cited answer)
+# --------------------------------------------------------------------------- #
+RAG_PROMPT_VERSION = "rag_v1"
+RAG_TEMPERATURE = 0.2   # a little latitude for prose; the model never emits a figure
+RAG_TOP_K = 8           # feedback items retrieved per question
+
 
 class Settings(BaseSettings):
     """Environment-driven settings (``.env`` + real env vars)."""

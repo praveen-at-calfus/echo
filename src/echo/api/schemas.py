@@ -14,3 +14,10 @@ class FeedbackIn(BaseModel):
     source_type: Literal["review", "ticket", "survey"] = "ticket"
     source_score: float | None = Field(default=None, description="rating/NPS if the source carries one")
     source_scale: Literal["star_1_5", "nps_0_10"] | None = None
+
+
+class AskIn(BaseModel):
+    """A free-text question for "ask echo" (POST /ask)."""
+
+    question: str = Field(min_length=3, max_length=500)
+    k: int | None = Field(default=None, ge=1, le=20, description="override how many items to retrieve")

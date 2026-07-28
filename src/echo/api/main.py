@@ -13,12 +13,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from echo.api import deps
-from echo.api.routers import feedback, health, stats, summary, themes, urgent
+from echo.api.routers import ask, feedback, health, stats, summary, themes, urgent
 
 app = FastAPI(
     title="echo API",
     version=deps.BUILD_ID,
-    description="AI customer-feedback intelligence — classify, money, themes, weekly summary.",
+    description="AI customer-feedback intelligence — classify, money, themes, weekly summary, ask echo.",
 )
 
 # The Streamlit frontend is a separate origin; allow browser calls.
@@ -26,7 +26,7 @@ app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
 )
 
-for r in (health.router, stats.router, themes.router, urgent.router, summary.router, feedback.router):
+for r in (health.router, stats.router, themes.router, urgent.router, summary.router, feedback.router, ask.router):
     app.include_router(r)
 
 
