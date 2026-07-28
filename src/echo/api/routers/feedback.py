@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query
+from langdetect import DetectorFactory, LangDetectException, detect
 from sqlalchemy import insert, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -20,7 +21,20 @@ from echo.api import deps
 from echo.api.schemas import FeedbackIn
 from echo.db import schema, vector
 
+DetectorFactory.seed = 0  # deterministic detection, matching the project's SEED-everywhere convention
+
 router = APIRouter(tags=["feedback"])
+
+
+def _detect_language(text: str) -> str | None:
+    """Best-effort ISO 639-1 code for live-submitted text (unlike the batch corpus,
+    which is Portuguese by construction, a live submission can be anything).
+    None on genuine detection failure (very short/ambiguous text) rather than
+    guessing — matches the project's "never fabricate a value" discipline."""
+    try:
+        return detect(text)
+    except LangDetectException:
+        return None
 
 
 @router.get("/feedback")
@@ -83,7 +97,7 @@ def create_feedback(item: FeedbackIn) -> dict:
             "source_score": item.source_score, "source_scale": item.source_scale,
             "order_value": item.order_value, "refund_amount": item.refund_amount,
             "fulfillment_outcome": item.fulfillment_outcome,
-            "created_at": now, "language": "pt", "synthetic": False})
+            "created_at": now, "language": _detect_language(item.text), "synthetic": False})
         c.execute(insert(schema.analysis), {
             "item_id": item_id, "category": analysis["category"], "sentiment": analysis["sentiment"],
             "urgency": analysis["urgency"], "rationale": analysis["rationale"],
