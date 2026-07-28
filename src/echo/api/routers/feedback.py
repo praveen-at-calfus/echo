@@ -81,6 +81,8 @@ def create_feedback(item: FeedbackIn) -> dict:
         c.execute(insert(schema.feedback), {
             "item_id": item_id, "source_type": item.source_type, "text": item.text,
             "source_score": item.source_score, "source_scale": item.source_scale,
+            "order_value": item.order_value, "refund_amount": item.refund_amount,
+            "fulfillment_outcome": item.fulfillment_outcome,
             "created_at": now, "language": "pt", "synthetic": False})
         c.execute(insert(schema.analysis), {
             "item_id": item_id, "category": analysis["category"], "sentiment": analysis["sentiment"],

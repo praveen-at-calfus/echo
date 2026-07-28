@@ -67,9 +67,9 @@ def urgent(week: str | None = None, limit: int = 20) -> dict:
     return _get("/urgent", week=week, limit=limit)
 
 
-@st.cache_data(ttl=60)
-def weekly_summary(week: str | None = None) -> dict:
-    return _get("/summary/weekly", week=week)
+def generate_weekly_summary(week: str) -> dict:
+    """Live POST — never cached (costs a real LLM call; generate-then-store, not read-cached)."""
+    return _post("/summary/weekly", {"week": week})
 
 
 @st.cache_data(ttl=60)
@@ -78,10 +78,13 @@ def eval_gold() -> dict:
 
 
 def submit_feedback(text: str, source_type: str = "ticket",
-                    source_score: float | None = None, source_scale: str | None = None) -> dict:
+                    source_score: float | None = None, source_scale: str | None = None,
+                    order_value: float | None = None, refund_amount: float | None = None,
+                    fulfillment_outcome: str | None = None) -> dict:
     """Live POST — never cached (writes data + costs a real LLM call)."""
-    return _post("/feedback", {"text": text, "source_type": source_type,
-                               "source_score": source_score, "source_scale": source_scale})
+    return _post("/feedback", {
+        "text": text, "source_type": source_type, "source_score": source_score, "source_scale": source_scale,
+        "order_value": order_value, "refund_amount": refund_amount, "fulfillment_outcome": fulfillment_outcome})
 
 
 def ask(question: str, k: int | None = None) -> dict:

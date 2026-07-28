@@ -80,13 +80,13 @@ def _drivers(eng, week: str, n: int) -> list[dict]:
     return cats[:n]
 
 
-def run(week: str | None = None) -> dict:
+def run(week: str | None = None, engine=None) -> dict:
     week = week or config.DEMO_WEEK
     if config.settings.use_offline:
         raise SystemExit("summary needs OPENAI_API_KEY (set it in .env).")
     model = config.settings.model
     pv = config.SUMMARY_PROMPT_VERSION
-    eng = create_engine(config.settings.database_url)
+    eng = engine or create_engine(config.settings.database_url)
     schema.metadata.create_all(eng)
 
     # 1) every number, from SQL

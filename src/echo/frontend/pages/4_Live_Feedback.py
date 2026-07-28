@@ -28,6 +28,19 @@ with st.form("submit_feedback"):
     with col2:
         source_score = st.number_input("Score (optional)", min_value=0.0, max_value=10.0, value=0.0, step=1.0,
                                        disabled=source_scale is None)
+
+    st.markdown("**Order details** — optional, but the money engine has nothing to compute from without "
+               "them (a real support agent would pull these from the linked order; here you type them in).")
+    col3, col4, col5 = st.columns(3)
+    with col3:
+        order_value = st.number_input("Order value (R$)", min_value=0.0, value=0.0, step=10.0)
+    with col4:
+        refund_amount = st.number_input("Refund / disputed amount (R$)", min_value=0.0, value=0.0, step=10.0)
+    with col5:
+        fulfillment_outcome = st.selectbox(
+            "Fulfillment outcome", [None, "on_time_delivered", "late_delivered", "shipped_not_delivered",
+                                    "unavailable", "canceled", "other"],
+            format_func=lambda v: "— unknown —" if v is None else v)
     submitted = st.form_submit_button("Submit")
 
 if submitted:
@@ -37,7 +50,9 @@ if submitted:
     try:
         result = api_client.submit_feedback(
             text=text, source_type=source_type,
-            source_score=(source_score if source_scale else None), source_scale=source_scale)
+            source_score=(source_score if source_scale else None), source_scale=source_scale,
+            order_value=(order_value or None), refund_amount=(refund_amount or None),
+            fulfillment_outcome=fulfillment_outcome)
     except Exception as e:  # noqa: BLE001
         st.error(f"Submission failed: {e}")
         st.stop()

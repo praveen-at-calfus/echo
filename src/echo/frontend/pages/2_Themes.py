@@ -16,7 +16,9 @@ st.caption("Weekly semantic clusters of negative/neutral feedback, labeled by th
           "never a false-precision single number.")
 
 week = st.text_input("Week (YYYY-MM-DD) — blank for latest available", value="")
-limit = st.slider("How many themes", 3, 20, 10)
+limit = st.slider("How many themes", 3, 10, 10,
+                  help="The themes stage only keeps the top 10 clusters per week by revenue-at-risk "
+                       "(config.TOP_THEMES) — there's nothing beyond 10 to show, even at max.")
 
 try:
     data = api_client.themes(week=week or None, limit=limit)

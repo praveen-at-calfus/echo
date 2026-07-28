@@ -1,4 +1,10 @@
-"""Weekly Summary — the SQL-computed briefing, narrated by the LLM."""
+"""Weekly Summary — pick a week, generate it live, then it's stored.
+
+Every number is SQL-computed; the LLM only writes the narration and picks which
+driver each action targets — echo attaches the dollar figure and owner
+afterward. Generating costs one real LLM call, so it's gated on an API key,
+same as Live Feedback and Ask echo.
+"""
 
 from __future__ import annotations
 
@@ -7,18 +13,36 @@ import streamlit as st
 from common import sidebar_status
 
 st.set_page_config(page_title="echo — Weekly Summary", page_icon="🗞️", layout="wide")
-sidebar_status()
+h = sidebar_status()
 
 st.title("🗞️ Weekly Summary")
 st.caption("Every number here is SQL-computed; the LLM only writes the narration and picks which "
           "driver each action targets — echo attaches the dollar figure and owner afterward.")
 
-week = st.text_input("Week (YYYY-MM-DD) — blank for latest available", value="")
+if not h.get("llm"):
+    st.warning("Generating a weekly summary needs an OpenAI key configured on the backend (OPENAI_API_KEY).")
+    st.stop()
 
-try:
-    s = api_client.weekly_summary(week=week or None)
-except Exception as e:  # noqa: BLE001
-    st.error(f"No weekly summary available: {e}")
+week = st.text_input("Week (YYYY-MM-DD)", value="", placeholder="e.g. 2018-03-05")
+generate = st.button("Generate weekly summary", type="primary")
+
+if "weekly_summary_result" not in st.session_state:
+    st.session_state.weekly_summary_result = None
+
+if generate:
+    if not week.strip():
+        st.error("Enter a week first (YYYY-MM-DD).")
+        st.stop()
+    with st.spinner(f"Computing every number for {week} and asking the model to narrate..."):
+        try:
+            st.session_state.weekly_summary_result = api_client.generate_weekly_summary(week)
+        except Exception as e:  # noqa: BLE001
+            st.error(f"Couldn't generate a summary for {week}: {e}")
+            st.stop()
+
+s = st.session_state.weekly_summary_result
+if s is None:
+    st.info("Pick a week and click Generate — nothing is shown until you do.")
     st.stop()
 
 st.subheader(f"Week of {s['week_start']}")
