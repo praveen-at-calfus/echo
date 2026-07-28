@@ -1,0 +1,14 @@
+# Keep the build context small — none of this is needed inside an image.
+data/
+.venv/
+.git/
+__pycache__/
+*.py[cod]
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+.DS_Store
+.env
+.env.*
+!.env.example
+docker/seed/*.sql.gz

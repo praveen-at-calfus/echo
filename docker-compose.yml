@@ -1,0 +1,73 @@
+# echo — one command, two app containers + a data store.
+#   docker compose up --build
+# First boot on an empty volume auto-restores docker/seed/ (schema + full data,
+# minus embeddings rows) via Postgres's docker-entrypoint-initdb.d convention —
+# `docker compose down -v` wipes the volume so the next `up` re-seeds from
+# scratch. Everything works with zero API cost; set OPENAI_API_KEY (in a root
+# .env, auto-read by compose) to light up Live Feedback + Ask echo.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: echo
+      POSTGRES_PASSWORD: echo
+      POSTGRES_DB: echo
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/seed:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"   # published for debugging (psql -h localhost -d echo -U echo)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U echo -d echo"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://echo:echo@db:5432/echo
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ECHO_MODEL: ${ECHO_MODEL:-gpt-4o-mini}
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    depends_on:
+      - backend
+    environment:
+      ECHO_API_URL: http://backend:8000
+    ports:
+      - "8501:8501"
+
+  # Opt-in: regenerate docker/seed/10_echo_seed.sql.gz from the running `db`
+  # (e.g. after re-running classify/themes/summary with a new prompt version).
+  # Run with: docker compose --profile rebuild run --rm seed
+  seed:
+    image: pgvector/pgvector:pg16
+    profiles: ["rebuild"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: echo
+    volumes:
+      - ./docker/seed:/seed
+    entrypoint:
+      - bash
+      - -c
+      - >
+        pg_dump -h db -U echo -d echo --no-owner --no-acl --exclude-table-data=embeddings
+        | gzip > /seed/10_echo_seed.sql.gz &&
+        echo 'seed regenerated -> docker/seed/10_echo_seed.sql.gz'
+
+volumes:
+  pgdata:
