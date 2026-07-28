@@ -35,6 +35,13 @@ Rules:
 - Be specific to what the quotes actually say. NEVER vague ("customer issues", "various
   problems", "general complaints", "product feedback").
 - 3-9 words total. No dollar amounts, no counts, no team names.
+- NEVER state a specific number (a day count, a quantity, an amount of time) unless it is
+  the shared, common figure across MOST of the quotes shown. The cluster can be much larger
+  than the handful of quotes you're shown, so one quote's specific number is not evidence
+  it's typical — pulling it into the label overstates precision that doesn't exist.
+  Bad: quotes mention delays of 6, 10, 15, and 24 days -> label says "delayed by 14 days"
+  (only one quote said 14; the other 143 items in the cluster didn't). Good: "Delivery:
+  shipments arrive late" (true of the whole cluster, states no specific day count).
 - English label even though the quotes are Portuguese."""
 
 

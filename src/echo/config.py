@@ -246,7 +246,7 @@ SUMMARY_URGENT_LIMIT = 10          # urgent items snapshotted into the summary
 # --------------------------------------------------------------------------- #
 # Themes stage (weekly clustering of embeddings; LLM labels, SQL ranks)
 # --------------------------------------------------------------------------- #
-THEME_PROMPT_VERSION = "theme_v1"
+THEME_PROMPT_VERSION = "theme_v2"  # v2: forbids stating a specific number pulled from one example only
 THEME_TEMPERATURE = 0.2
 CLUSTER_DISTANCE_THRESHOLD = 0.40  # agglomerative cosine distance cut (lower = tighter)
 MIN_CLUSTER_SIZE = 3               # ignore clusters smaller than this
