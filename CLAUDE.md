@@ -19,7 +19,8 @@ echo is **AI customer-feedback intelligence for e-commerce**: it ingests messy c
 - **Weekly summary** (`src/echo/summary/`, `python -m echo.summary [--week]`): SQL computes every number (volume + sentiment WoW, top drivers by revenue-at-risk, urgent queue); the LLM only narrates + picks a driver-category per action; echo injects the `$` (authoritative per-category exposure) and owner. Writes one upserted row per week to `weekly_summary` (+ `llm_calls` audit). Uses real themes when present (`source: theme`), else falls back to categories-by-revenue-at-risk (`source: category_fallback`).
 - **API** (`src/echo/api/`, `python -m echo.api` or `uvicorn echo.api.main:app`): FastAPI, SQLAlchemy Core + parameterized SQL, no ORM session. Endpoints: `/health` (db+llm+build_id), `/stats/{overview,volume,sentiment,crosstab}`, `/themes`, `/urgent`, `/summary/weekly`, `GET /feedback` (filter+paginate), `POST /feedback` (live classify+embed+money, gated on `/health.llm`), `POST /ask` (RAG, gated on `/health.llm`). Reuses `classify.classify_text()` + `embed.embed_texts()`. Every figure is SQL-computed. All endpoints verified against the live DB.
 - **RAG / "ask echo"** (`src/echo/rag/`, `python -m echo.rag "question"` or `POST /ask`): embed the question (`embed.embed_texts`) → pgvector cosine top-k over `embeddings` (`rag/retrieve.py`, query vector bound as a `CAST(:qvec AS vector)` literal — no stored row on the query side) → LLM writes a grounded answer + a list of `item_id`s it drew on (`rag/prompts.py::RagAnswer`, hallucinated ids dropped) → echo appends a stats block computed purely in SQL over the same retrieved set (sentiment split, top category, `money.exposure_for_items` dollar figures) — the model never emits a number. One `llm_calls` audit row per call (`call_type='rag'`). Verified live: "late deliveries?" and a billing-charges question both returned grounded, cited, SQL-numbered answers via both the CLI and `POST /ask`.
-- **Not yet built (the MVP in progress):** `frontend`.
+- **Frontend** (`src/echo/frontend/`, `python -m echo.frontend` or `streamlit run src/echo/frontend/app.py`; base URL from `ECHO_API_URL`, default `http://localhost:8000`): Streamlit multipage dashboard, a genuinely thin client — every number/answer comes from `api_client.py` calling the FastAPI backend, nothing computed locally. `app.py` = Overview (KPI tiles, money-at-stake tiles, volume by category/source, sentiment split + weekly trend, category×source heatmap); `pages/` = Urgent Queue, Themes (chart + expandable cards), Weekly Summary, Live Feedback (`POST /feedback`, gated on `/health.llm`), Ask echo (`POST /ask`, gated). `charts.py` builds Plotly figures per the dataviz-skill method (one hue for magnitude bars/heatmap, reserved good/neutral/critical status colors for the 3-way sentiment split/trend, titles+axes+legends+automargin on every figure); `common.py` holds the shared sidebar health badge + a compact-currency (`R$115k`) money-metric row. Verified live end-to-end with a real backend + Playwright/Chromium: all 6 pages screenshotted, plus real interactive round-trips — submitted a live ticket (correctly floored to urgency 5 on the fraud/double-charge phrasing) and asked a real question through the UI (grounded, cited, dollar-figured answer rendered).
+- **Not yet built (the MVP in progress):** Docker packaging (2 containers + pgvector Postgres + pre-seeded dump).
 
 ## Setup & commands
 
@@ -27,7 +28,7 @@ Python **3.13** venv at `.venv`. The `echo` package is **not** installed editabl
 
 ```bash
 python3.13 -m venv .venv
-.venv/bin/pip install -e ".[corpus,db,dev]"     # extras: corpus, db, dev (more added as MVP stages land)
+.venv/bin/pip install -e ".[corpus,db,pipeline,app,frontend,dev]"   # extras: corpus, db, pipeline, app, frontend, dev
 cp .env.example .env                             # set OPENAI_API_KEY (only needed for LLM stages)
 
 # Run a stage (every stage is a package with a __main__):
@@ -37,6 +38,8 @@ PYTHONPATH=src .venv/bin/python -m echo.corpus --offline    # deterministic stub
 PYTHONPATH=src .venv/bin/python -m echo.corpus --stage econ|verify|all   # single stage
 PYTHONPATH=src .venv/bin/python -m echo.db                  # (re)load data/processed -> Postgres
 PYTHONPATH=src .venv/bin/python -m echo.db --keep           # append instead of truncate+reload
+PYTHONPATH=src .venv/bin/python -m echo.api                 # run the backend (uvicorn, :8000)
+ECHO_API_URL=http://localhost:8000 PYTHONPATH=src .venv/bin/python -m echo.frontend   # run the dashboard (:8501)
 
 .venv/bin/ruff check src/                        # lint (config in pyproject; must be clean)
 psql -h localhost -d echo                        # DB console
