@@ -24,6 +24,7 @@ from echo import config
 
 
 def _version(model: str | None, pv: str | None) -> tuple[str, str]:
+    """Fill in the current default model name and prompt version for any argument left as None."""
     return (model or config.settings.model, pv or config.CLASSIFY_PROMPT_VERSION)
 
 
@@ -48,6 +49,9 @@ def gold_report(engine=None, model: str | None = None, pv: str | None = None) ->
 
     cats = config.CATEGORIES
     sentiments = ("positive", "neutral", "negative")
+    # A confusion matrix counts, for every (true label, predicted label) pair, how many times
+    # that combination happened. The diagonal (true == predicted) is what the model got right;
+    # everything off the diagonal is a specific kind of mistake (e.g. "gold said X, model said Y").
     cat_confusion = {g: dict.fromkeys(cats, 0) for g in cats}
     sent_confusion = {g: dict.fromkeys(sentiments, 0) for g in sentiments}
     cat_correct = sent_correct = 0
@@ -63,6 +67,9 @@ def gold_report(engine=None, model: str | None = None, pv: str | None = None) ->
         sent_correct += int(sent_ok)
         err = abs(r["gold_urgency"] - r["pred_urgency"])
         urgency_errors.append(err)
+        # Flag this item for manual review if the model got the category wrong, the
+        # sentiment wrong, or was off by 2+ urgency levels (a small 0-or-1 urgency miss is
+        # normal noise; a bigger miss is worth a human looking at).
         if not cat_ok or not sent_ok or err >= 2:
             mismatches.append({
                 "item_id": r["item_id"], "source_type": r["source_type"],
@@ -77,6 +84,8 @@ def gold_report(engine=None, model: str | None = None, pv: str | None = None) ->
         "n": n, "model": model, "prompt_version": pv, "labeled": True,
         "category_accuracy": round(cat_correct / n, 3),
         "sentiment_accuracy": round(sent_correct / n, 3),
+        # MAE (Mean Absolute Error) here is the average size of the urgency miss, ignoring
+        # direction (e.g. predicting 3 when gold says 5, or 5 when gold says 3, both count as 2).
         "urgency_mae": round(sum(urgency_errors) / n, 2),
         "urgency_exact_match_rate": round(sum(1 for e in urgency_errors if e == 0) / n, 3),
         "urgency_within_1_rate": round(sum(1 for e in urgency_errors if e <= 1) / n, 3),
@@ -109,6 +118,7 @@ def silver_sentiment_report(engine=None, model: str | None = None, pv: str | Non
 
 
 def run(model: str | None = None, pv: str | None = None) -> dict:
+    """Build both the gold and silver evaluation reports, print them, and return them together as a dict."""
     eng = create_engine(config.settings.database_url)
     gold = gold_report(eng, model, pv)
     silver = silver_sentiment_report(eng, model, pv)
@@ -121,6 +131,7 @@ def _fmt_pct(x) -> str:
 
 
 def _print_report(gold: dict, silver: dict) -> None:
+    """Print a human-readable summary of the gold and silver evaluation reports to the console."""
     print(f"\n=== Gold-set evaluation (n={gold['n']}, {gold['model']}/{gold['prompt_version']}) ===")
     if not gold.get("labeled"):
         print("no labeled gold items found.")

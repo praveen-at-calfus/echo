@@ -40,11 +40,13 @@ _SURVEY_FEWSHOT = {
 
 
 def _facts_block(facts: dict) -> str:
+    """Turn a dict of real order facts into a bullet-point list of text lines, skipping any that are missing."""
     lines = [f"- {k}: {v}" for k, v in facts.items() if v is not None]
     return "\n".join(lines)
 
 
 def _ticket_user(brief: dict) -> str:
+    """Build the user-message text asking the model to write one support ticket, grounded in the brief's real facts and style."""
     facts = brief["facts"]
     cat = brief.get("category")
     ex = _TICKET_FEWSHOT[brief["seed"] % len(_TICKET_FEWSHOT)]
@@ -66,6 +68,7 @@ def _ticket_user(brief: dict) -> str:
 
 
 def _survey_user(brief: dict) -> str:
+    """Build the user-message text asking the model to write one NPS survey response, grounded in the brief's real facts and target sentiment."""
     facts = brief["facts"]
     sent = brief.get("target_sentiment", "passive")
     ex = _SURVEY_FEWSHOT.get(sent, _SURVEY_FEWSHOT["passive"])
@@ -84,5 +87,6 @@ def _survey_user(brief: dict) -> str:
 
 
 def build_messages(brief: dict) -> list[tuple[str, str]]:
+    """Build the system/user chat messages for one synthetic item, picking the ticket or survey template based on the brief's source type."""
     user = _ticket_user(brief) if brief["source_type"] == "ticket" else _survey_user(brief)
     return [("system", _SYSTEM), ("user", user)]

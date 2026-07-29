@@ -28,6 +28,7 @@ STATUS = {"positive": "#0ca30c", "neutral": "#c3c2b7", "negative": "#d03b3b"}
 
 def _layout(fig: go.Figure, title: str, xaxis: str, yaxis: str,
            showlegend: bool = False, height: int | None = None) -> go.Figure:
+    """Apply the shared look (title, axis labels, transparent background, muted grid/legend) to a figure and return it."""
     fig.update_layout(
         title=title, xaxis_title=xaxis, yaxis_title=yaxis,
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
@@ -51,13 +52,19 @@ def magnitude_bar(data: list[dict], key_field: str, value_field: str,
     whichever orientation is requested — the caller picks them per-orientation, this
     function never needs to remap them.
     """
+    # Sort biggest-value category first, so the chart reads as a ranked list.
     rows = sorted(data, key=lambda d: d[value_field], reverse=True)
     keys = [r[key_field] for r in rows]
     vals = [r[value_field] for r in rows]
+    # Horizontal bars need more vertical room as more categories are added, so
+    # grow the figure height with the row count instead of using a fixed size.
     height = max(350, 35 * len(keys) + 100) if horizontal else None
     if horizontal:
         fig = go.Figure(go.Bar(y=keys, x=vals, orientation="h", marker_color=_SEQUENTIAL,
                                hovertemplate="%{y}<br>%{x:,.2f}<extra></extra>"))
+        # Plotly draws horizontal-bar categories bottom-to-top by default, which
+        # would put the biggest value (sorted first) at the bottom; reverse the
+        # axis so the biggest bar shows up top instead.
         fig.update_yaxes(autorange="reversed")
     else:
         fig = go.Figure(go.Bar(x=keys, y=vals, marker_color=_SEQUENTIAL,
@@ -68,8 +75,11 @@ def magnitude_bar(data: list[dict], key_field: str, value_field: str,
 def sentiment_split_bar(sentiment: dict, title: str = "Sentiment split") -> go.Figure:
     """A single 100%-width horizontal stacked bar, one segment per sentiment (status color job)."""
     order = ["positive", "neutral", "negative"]
+    # "or 1" avoids a divide-by-zero below when there is no data yet.
     total = sum(sentiment.get(k, 0) for k in order) or 1
     fig = go.Figure()
+    # Add one stacked segment per sentiment, in a fixed order, so the bar always
+    # reads positive/neutral/negative left to right regardless of input order.
     for k in order:
         v = sentiment.get(k, 0)
         fig.add_bar(y=["items"], x=[v], name=k.capitalize(), orientation="h", marker_color=STATUS[k],
@@ -91,10 +101,16 @@ def sentiment_trend(weekly: list[dict], title: str = "Sentiment over time") -> g
 def crosstab_heatmap(data: dict[str, dict[str, int]], title: str = "Category x source") -> go.Figure:
     """Sequential single-hue heatmap — magnitude per cell, category x source."""
     categories = sorted(data.keys())
+    # Collect every source that appears anywhere in the data (not just under one
+    # category), so the heatmap has one column per source across all rows.
     sources = sorted({s for row in data.values() for s in row})
+    # Build a 2D grid (rows = categories, columns = sources) of counts, filling
+    # in 0 for any category/source pair that has no data.
     z = [[data.get(c, {}).get(s, 0) for s in sources] for c in categories]
     fig = go.Figure(go.Heatmap(
         z=z, x=sources, y=categories,
+        # Spread the fixed light-to-dark color ramp evenly across the 0-1 range
+        # Plotly expects for a colorscale.
         colorscale=[[i / (len(_SEQ_RAMP) - 1), c] for i, c in enumerate(_SEQ_RAMP)],
         hovertemplate="%{y} x %{x}: %{z:,}<extra></extra>", colorbar=dict(title="items"),
     ))

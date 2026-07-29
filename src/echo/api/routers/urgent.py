@@ -13,5 +13,6 @@ router = APIRouter(tags=["urgent"])
 @router.get("/urgent")
 def urgent(week: str | None = Query(None, description="ISO week start; default = all-time"),
            limit: int = Query(20, ge=1, le=100)) -> dict:
+    """GET /urgent: return the highest-priority feedback items (urgency at or above the configured floor) ranked by dollar exposure, optionally scoped to one week."""
     items = money.urgent_items(deps.get_engine(), week=week, limit=limit)
     return {"week": week or "all-time", "count": len(items), "items": items}

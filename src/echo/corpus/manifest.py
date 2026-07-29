@@ -18,6 +18,7 @@ from echo.schemas.envelope import CorpusItem
 
 
 def _sha256(path) -> str:
+    """Compute the sha256 hash of a file's contents (read in chunks so large files don't need to fit in memory) and return it as a hex string."""
     h = hashlib.sha256()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
@@ -26,6 +27,7 @@ def _sha256(path) -> str:
 
 
 def corpus_build_id(model: str) -> str:
+    """Derive a short, stable build id from the seed, prompt versions, generation model, and builder version, so identical settings always produce the same id."""
     payload = "|".join(
         [str(config.SEED), config.PROMPT_VERSION_TICKETS, config.PROMPT_VERSION_SURVEYS,
          model, config.BUILDER_VERSION]
@@ -34,10 +36,12 @@ def corpus_build_id(model: str) -> str:
 
 
 def _dist(items, key):
+    """Count how many items fall into each distinct value returned by key(item), and return that as a dict."""
     return dict(Counter(key(it) for it in items))
 
 
 def build_manifest(items: list[CorpusItem], stage_stats: dict, generator, build_id: str) -> dict:
+    """Assemble the full build manifest dict: counts, distributions, messy-flag stats, money coverage, generation stats, and input file hashes, for one corpus build."""
     by_source = _dist(items, lambda it: it.source_type)
     scored = [it for it in items if it.source_score is not None]
     return {
@@ -91,10 +95,12 @@ def build_manifest(items: list[CorpusItem], stage_stats: dict, generator, build_
 
 
 def _rate(items, pred) -> float:
+    """Compute the fraction of items for which pred(item) is true, rounded to 4 decimal places (0 if there are no items)."""
     return round(sum(1 for it in items if pred(it)) / max(len(items), 1), 4)
 
 
 def write_manifest(manifest: dict) -> None:
+    """Write the manifest to both a JSON file (machine-readable) and a Markdown file (human-readable summary)."""
     config.PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     (config.PROCESSED_DIR / "manifest.json").write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False, default=str)
@@ -103,6 +109,7 @@ def write_manifest(manifest: dict) -> None:
 
 
 def _render_md(m: dict) -> str:
+    """Format the manifest dict as a short human-readable Markdown report and return it as a string."""
     c = m["counts"]
     mf = m["messy_flags"]
     lines = [

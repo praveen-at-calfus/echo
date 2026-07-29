@@ -50,6 +50,10 @@ users = Table(
     CheckConstraint("role IN ('gen_pop', 'company')", name="ck_users_role"),
 )
 
+# One row per order, sourced from the raw Olist e-commerce order/payment/shipping data. This
+# is the single source of truth for money and delivery-timing facts (values, dates, whether an
+# order arrived late); the feedback table below links to it via order_id so the money engine
+# always computes dollar figures from here, never from anything the LLM writes.
 order_economics = Table(
     "order_economics",
     metadata,

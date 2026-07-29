@@ -16,11 +16,15 @@ def _expected(source_score: float | None, source_scale: str | None) -> str | Non
     if source_score is None or source_scale is None:
         return None
     if source_scale == "star_1_5":
+        # A 1-2 star rating implies the customer is unhappy; 4-5 stars implies they're happy.
+        # 3 stars is a genuinely mixed/neutral rating, so it makes no strong prediction.
         if source_score <= 2:
             return "negative"
         if source_score >= 4:
             return "positive"
     elif source_scale == "nps_0_10":
+        # Same idea for NPS (0-10 "how likely to recommend us"): low scores are unhappy,
+        # high scores are happy, and the middle range is treated as no strong signal.
         if source_score <= config.NPS_NEG_MAX:
             return "negative"
         if source_score >= config.NPS_POS_MIN:

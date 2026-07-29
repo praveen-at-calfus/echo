@@ -31,6 +31,7 @@ _PRICE_IN, _PRICE_OUT = 0.15, 0.60  # gpt-4o-mini USD per 1M tokens
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=20), reraise=True)
 def _invoke(structured_llm, facts: dict):
+    """Call the LLM once with the week's facts (auto-retrying on failure), and return the parsed narrative plus token counts and latency."""
     t0 = time.perf_counter()
     out = structured_llm.invoke(build_messages(facts))
     latency = int((time.perf_counter() - t0) * 1000)
@@ -81,6 +82,7 @@ def _drivers(eng, week: str, n: int) -> list[dict]:
 
 
 def run(week: str | None = None, engine=None) -> dict:
+    """Build and save the weekly summary for one week: gather every number from SQL, have the LLM narrate around them, attach dollar figures and owners, write the row, and return a summary dict."""
     week = week or config.DEMO_WEEK
     if config.settings.use_offline:
         raise SystemExit("summary needs OPENAI_API_KEY (set it in .env).")
@@ -166,10 +168,12 @@ def run(week: str | None = None, engine=None) -> dict:
 
 
 def _fmt(n) -> str:
+    """Format a number as a Brazilian-real currency string with thousands separators, e.g. R$1,234."""
     return f"R${float(n):,.0f}"
 
 
 def _print_report(week, facts, narrative, actions, cost) -> None:
+    """Print a plain-text version of the weekly briefing (TL;DR, narrative, top drivers, actions) to the console."""
     v = facts["volume"]
     trend = "no baseline yet" if not v["has_baseline"] else f"{v['pct_change']:+.1f}% vs last week"
     print(f"\n=== Weekly summary · week of {week} ({trend}) ===\n")

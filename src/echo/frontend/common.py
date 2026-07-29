@@ -27,6 +27,7 @@ PASSWORD_HINT = ("At least 8 characters, with an uppercase letter, a lowercase l
 
 
 def _password_issues(password: str) -> list[str]:
+    """Check a password against the policy and return a list of what's missing (empty list if it passes)."""
     missing = []
     if len(password) < PASSWORD_MIN_LENGTH:
         missing.append(f"at least {PASSWORD_MIN_LENGTH} characters")
@@ -57,6 +58,7 @@ def logout() -> None:
 
 
 def _store_and_rerun(token_resp: dict, email: str) -> None:
+    """Save the freshly logged-in user into the session and reload the page so the app picks it up."""
     st.session_state["auth_user"] = {
         "token": token_resp["access_token"], "role": token_resp["role"], "email": email,
     }
@@ -169,6 +171,7 @@ def render_landing() -> None:
 
 
 def _render_auth_form() -> None:
+    """Render the log-in / sign-up form (mode toggle plus the matching fields and submit handling)."""
     # A mode toggle (not st.tabs) because a successful sign-up needs to switch
     # the view back to "Log in" programmatically, which tabs cannot do. The
     # switch is deferred to a flag checked here, BEFORE the radio widget below

@@ -13,6 +13,7 @@ router = APIRouter(tags=["themes"])
 @router.get("/themes")
 def themes(week: str | None = Query(None, description="ISO week start; default = latest available"),
            limit: int = Query(10, ge=1, le=50)) -> dict:
+    """GET /themes: return the recurring feedback clusters (themes) for one week, ranked by dollars at risk, defaulting to the most recent week that has themes computed."""
     eng = deps.get_engine()
     with eng.connect() as c:
         if week is None:

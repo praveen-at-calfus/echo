@@ -61,6 +61,8 @@ def _star_rating_input(label: str, key: str) -> int:
             if st.button(glyph, key=f"{key}_star_{i}", use_container_width=True):
                 clicked = i
     if clicked is not None and clicked != current:
+        # Save the new rating, then force a rerun so the page redraws with the
+        # correct stars filled in immediately after the click.
         st.session_state[key] = clicked
         st.rerun()
     return current

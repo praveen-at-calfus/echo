@@ -28,6 +28,7 @@ _P = {"model": deps.MODEL, "pv": deps.PROMPT_VERSION}
 
 @router.get("/analytics")
 def user_analytics() -> dict:
+    """GET /users/analytics: for every registered user, compute their submission count, sentiment breakdown, average urgency, category focus, weekly sentiment trend, and dollars at risk, counting only feedback they personally submitted."""
     eng = deps.get_engine()
 
     with eng.connect() as c:

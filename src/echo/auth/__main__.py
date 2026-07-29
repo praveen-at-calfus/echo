@@ -21,10 +21,12 @@ from echo.db import schema
 
 
 def _engine():
+    """Create a new database engine connection using the configured database URL."""
     return create_engine(config.settings.database_url, pool_pre_ping=True)
 
 
 def _cmd_seed(_args) -> int:
+    """Run the `seed` subcommand: create the demo company + gen_pop accounts and print what happened."""
     engine = _engine()
     for line in seed_mod.seed_demo_users(engine):
         print(line)
@@ -34,6 +36,7 @@ def _cmd_seed(_args) -> int:
 
 
 def _cmd_create_user(args) -> int:
+    """Run the `create-user` subcommand: create one account with the given email/password/role, printing an error if it fails."""
     engine = _engine()
     seed_mod.ensure_users_table(engine)
     try:
@@ -51,6 +54,7 @@ def _cmd_create_user(args) -> int:
 
 
 def _cmd_list(_args) -> int:
+    """Run the `list` subcommand: print every existing account's email, role, and active status."""
     engine = _engine()
     seed_mod.ensure_users_table(engine)
     with engine.connect() as c:
@@ -67,6 +71,7 @@ def _cmd_list(_args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Parse the command-line arguments and dispatch to the matching seed/create-user/list subcommand."""
     parser = argparse.ArgumentParser(prog="python -m echo.auth", description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
 

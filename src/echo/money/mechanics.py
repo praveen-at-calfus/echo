@@ -25,6 +25,7 @@ def _lit(v) -> str:
 
 
 def _case(col: str, mapping: dict, default: str = "0") -> str:
+    """Build a SQL CASE expression that maps each key in mapping to its value for the given column, with a fallback default."""
     whens = " ".join(f"WHEN {col}={_lit(k)} THEN {_lit(v)}" for k, v in mapping.items())
     return f"CASE {whens} ELSE {default} END"
 

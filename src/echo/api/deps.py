@@ -73,6 +73,7 @@ def llm_available() -> bool:
 
 
 def db_ok() -> bool:
+    """Check that the database is reachable by running a trivial query; returns True if it succeeds, False otherwise."""
     try:
         with get_engine().connect() as c:
             c.execute(text("SELECT 1"))

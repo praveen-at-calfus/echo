@@ -23,6 +23,7 @@ from echo.db import schema, vector
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Startup routine that runs once when the API boots: makes sure every database table (and the pgvector extension it needs) exists before requests are served."""
     # Idempotent, never truncates — a safety net so the API works even against
     # a bare Postgres (no seed dump restored yet), same create_all every batch
     # stage already calls at the start of its own run().
@@ -75,4 +76,5 @@ app.include_router(feedback.router)
 
 @app.get("/", tags=["meta"])
 def root() -> dict:
+    """Landing route at "/": confirms the API is running and points to the interactive docs page."""
     return {"service": "echo", "build_id": deps.BUILD_ID, "docs": "/docs"}

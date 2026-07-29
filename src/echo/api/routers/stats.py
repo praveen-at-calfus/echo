@@ -49,6 +49,7 @@ def overview() -> dict:
 
 @router.get("/volume")
 def volume(by: str = Query("category", pattern="^(category|source)$")) -> dict:
+    """GET /stats/volume: count of feedback items grouped either by category or by source type (review/ticket/survey), depending on the `by` parameter."""
     col = "a.category" if by == "category" else "f.source_type"
     with deps.get_engine().connect() as c:
         rows = c.execute(text(f"SELECT {col} AS k, count(*) n {_BASE} GROUP BY 1 ORDER BY 2 DESC"), _P).all()
@@ -57,6 +58,7 @@ def volume(by: str = Query("category", pattern="^(category|source)$")) -> dict:
 
 @router.get("/sentiment")
 def sentiment(by: str = Query("split", pattern="^(split|week)$")) -> dict:
+    """GET /stats/sentiment: either the overall positive/neutral/negative split, or the week-by-week sentiment trend, depending on the `by` parameter."""
     if by == "split":
         with deps.get_engine().connect() as c:
             rows = c.execute(text(f"SELECT a.sentiment AS k, count(*) n {_BASE} GROUP BY 1"), _P).all()

@@ -48,6 +48,7 @@ def list_feedback(
     offset: int = Query(0, ge=0),
     user: dict = Depends(deps.get_current_user),
 ) -> dict:
+    """GET /feedback: list stored feedback items with optional filters (category, sentiment, source, minimum urgency, text search) and pagination; gen_pop users only see their own submissions, company users see everything."""
     where = ["a.model_name = :model", "a.prompt_version = :pv"]
     p: dict = {"model": deps.MODEL, "pv": deps.PROMPT_VERSION, "limit": limit, "offset": offset}
     optional = [("a.category = :category", "category", category),
@@ -81,6 +82,7 @@ def list_feedback(
 
 @router.post("/feedback", status_code=201)
 def create_feedback(item: FeedbackIn, user: dict = Depends(deps.get_current_user)) -> dict:
+    """POST /feedback: submit one new feedback item live, running it through the same classify + embed + money pipeline the batch corpus uses, and store the result tied to the submitting user."""
     if not deps.llm_available():
         raise HTTPException(503, "live submission needs an OpenAI key (set OPENAI_API_KEY)")
     from echo.classify.crosscheck import disagreement
@@ -91,8 +93,14 @@ def create_feedback(item: FeedbackIn, user: dict = Depends(deps.get_current_user
     now = datetime.now()
     eng = deps.get_engine()
 
+    # Run the same LLM classification (category/sentiment/urgency) the batch
+    # pipeline uses, so live submissions are scored identically to the corpus.
     analysis, usage = classify_text(item.text)
+    # Also turn the text into a semantic vector (an "embedding") so this new
+    # item can be found later by theme clustering and by "ask echo" search.
     vecs, _tokens = embed_texts([item.text])
+    # Flag it if the model's sentiment call disagrees with the star rating or
+    # NPS score the customer actually gave, if they gave one.
     dis = disagreement(analysis["sentiment"], item.source_score, item.source_scale)
     a_hash = _analysis_hash(item.text, deps.PROMPT_VERSION, deps.MODEL)
 
@@ -118,6 +126,8 @@ def create_feedback(item: FeedbackIn, user: dict = Depends(deps.get_current_user
             "latency_ms": usage["latency_ms"] or None, "status": "ok"})
 
     from echo.money import engine as money
+    # Compute the dollar amount at stake for this one item using the same
+    # money engine the batch pipeline uses, so live and batch figures line up.
     exposure = money.exposure_for_items([item_id], eng)
     return {"item_id": item_id, "analysis": analysis,
             "source_score_disagreement": dis, "money": exposure}

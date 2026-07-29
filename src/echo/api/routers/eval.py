@@ -15,6 +15,7 @@ router = APIRouter(prefix="/eval", tags=["eval"])
 
 @router.get("/gold")
 def gold() -> dict:
+    """GET /eval/gold: return the model's accuracy report, comparing its predictions against a small human-verified gold set and against star/NPS-derived sentiment across the full dataset."""
     eng = deps.get_engine()
     return {
         "gold": evaluate.gold_report(eng, deps.MODEL, deps.PROMPT_VERSION),

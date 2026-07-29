@@ -46,6 +46,7 @@ Rules:
 
 
 def build_messages(category: str, quotes: list[str], stricter: bool = False) -> list[tuple[str, str]]:
+    """Build the system/user chat messages asking the model to label a cluster, adding a firmer instruction if the previous attempt was too generic."""
     body = "\n".join(f"- {q}" for q in quotes)
     extra = ("\n\nYour previous label was too generic. Be concrete and specific to these quotes: "
              "name the exact component and the exact failure." if stricter else "")

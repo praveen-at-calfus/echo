@@ -45,10 +45,14 @@ c3.metric("Urgency exact match", f"{gold['urgency_exact_match_rate'] * 100:.1f}%
 c4.metric("Mismatches", f"{len(gold['mismatches'])} / {gold['n']}")
 
 st.markdown("**Category confusion matrix** (rows = human label, columns = classifier prediction)")
+# Transpose so rows are the human (gold) label as the caption says, then force
+# both the row and column order to match the fixed category list, so the table
+# always reads in the same order instead of whatever order the API returned.
 cat_df = pd.DataFrame(gold["category_confusion"]).T[gold["categories"]].reindex(gold["categories"])
 st.dataframe(cat_df, use_container_width=True)
 
 st.markdown("**Sentiment confusion matrix**")
+# Same reordering trick as the category matrix above, applied to the 3 sentiment classes.
 sent_df = pd.DataFrame(gold["sentiment_confusion"]).T[gold["sentiments"]].reindex(gold["sentiments"])
 st.dataframe(sent_df, use_container_width=True)
 
@@ -66,6 +70,9 @@ st.subheader(f"Mismatches ({len(gold['mismatches'])})")
 if not gold["mismatches"]:
     st.success("No mismatches: the classifier matched every gold label.")
 for m in gold["mismatches"]:
+    # Give a different header depending on whether the category itself was wrong
+    # or the category was right but sentiment/urgency was off, so it's obvious
+    # at a glance which kind of mistake each card is about.
     if m["gold_category"] != m["pred_category"]:
         header = f"[{m['source_type']}] category: {m['gold_category']} -> {m['pred_category']}"
     else:

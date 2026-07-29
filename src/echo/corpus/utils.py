@@ -31,6 +31,7 @@ def child_seed(base: int, *parts: object) -> int:
 
 
 def write_jsonl(path: Path, items: Iterable[CorpusItem]) -> int:
+    """Write a list of CorpusItem records to a JSONL file and return how many were written."""
     path.parent.mkdir(parents=True, exist_ok=True)
     n = 0
     tmp = path.with_suffix(path.suffix + ".tmp")
@@ -38,11 +39,13 @@ def write_jsonl(path: Path, items: Iterable[CorpusItem]) -> int:
         for it in items:
             f.write(json.dumps(it.model_dump(mode="json"), ensure_ascii=False) + "\n")
             n += 1
+    # Write to a temp file first, then rename, so a crash mid-write never leaves a half-written file in place.
     tmp.replace(path)  # atomic
     return n
 
 
 def read_jsonl(path: Path) -> Iterator[dict]:
+    """Read a JSONL file line by line and yield each line as a parsed dict."""
     with path.open(encoding="utf-8") as f:
         for line in f:
             line = line.strip()

@@ -22,6 +22,7 @@ _VALUE_CHECKS = {"median": (95, 115), "p95": (400, 500), "max": (13000, 14000)}
 
 
 def _approx(a, b, tol=0.05) -> bool:
+    """Return True if a and b are both None, or both present and numerically close within the given tolerance."""
     if a is None and b is None:
         return True
     if a is None or b is None:
@@ -30,9 +31,11 @@ def _approx(a, b, tol=0.05) -> bool:
 
 
 def run() -> list[tuple[str, bool, str]]:
+    """Run all corpus invariant checks against the written build output and return a list of (check name, pass/fail, detail) tuples."""
     checks: list[tuple[str, bool, str]] = []
 
     def check(name, ok, detail=""):
+        """Record the result of one named check into the checks list."""
         checks.append((name, bool(ok), detail))
 
     # Load.
@@ -124,6 +127,7 @@ def run() -> list[tuple[str, bool, str]]:
 
     # 10. Silver-label coherence.
     def silver_ok(it):
+        """Return True if this item's silver negative/positive label agrees with what its raw score (stars or NPS) implies."""
         if it.silver_label is None:
             return True
         if it.source_scale == "star_1_5":
@@ -137,6 +141,7 @@ def run() -> list[tuple[str, bool, str]]:
 
 
 def main() -> int:
+    """Run all checks, print a PASS/FAIL table, and return 0 if everything passed or 1 if anything failed."""
     checks = run()
     width = max(len(n) for n, _, _ in checks)
     print("\n=== echo corpus verification ===")

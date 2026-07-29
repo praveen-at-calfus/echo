@@ -68,6 +68,9 @@ class RegisterIn(BaseModel):
     @field_validator("password")
     @classmethod
     def _check_password(cls, v: str) -> str:
+        """Pydantic validator: rejects passwords that don't meet the length/case/digit/special-character policy, listing everything missing in one error."""
+        # Check every rule instead of stopping at the first failure, so the
+        # error message tells the user everything they need to fix at once.
         missing = []
         if len(v) < PASSWORD_MIN_LENGTH:
             missing.append(f"at least {PASSWORD_MIN_LENGTH} characters")

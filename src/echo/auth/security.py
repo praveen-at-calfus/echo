@@ -26,6 +26,7 @@ _BCRYPT_MAX_BYTES = 72
 
 
 def _pw_bytes(password: str) -> bytes:
+    """Convert a password string to bytes and cut it to bcrypt's 72-byte input limit."""
     return password.encode("utf-8")[:_BCRYPT_MAX_BYTES]
 
 

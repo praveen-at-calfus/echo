@@ -14,11 +14,16 @@ import re
 from echo import config
 from echo.corpus.utils import normalize_text
 
+# Pre-compile the regex patterns once at import time (instead of on every call) since they're
+# reused for every single feedback item.
 _PATTERNS = [re.compile(p) for p in config.URGENCY_FLOOR_PATTERNS]
 
 
 def apply_floor(urgency: int, text: str, floor_signal: bool | None) -> tuple[int, bool]:
     """Return (possibly-raised urgency, whether the floor fired)."""
+    # "Floor" means a minimum value we won't let urgency drop below. It fires either because
+    # the text matches one of our known serious-phrase patterns (e.g. fraud, double-charge),
+    # or because an upstream flag (urgency_floor_signal) already marked this item as serious.
     hit = bool(floor_signal) or any(p.search(normalize_text(text)) for p in _PATTERNS)
     if hit:
         return max(urgency, config.URGENCY_FLOOR), True

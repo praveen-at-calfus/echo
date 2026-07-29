@@ -17,6 +17,10 @@ router = APIRouter(tags=["ask"])
 
 @router.post("/ask")
 def ask(body: AskIn) -> dict:
+    """POST /ask: answer a free-text question about the feedback corpus using retrieval-augmented generation, returning a grounded, cited answer with SQL-computed stats."""
+    # This feature needs to call an LLM (both to search and to write the
+    # answer), so block the request up front if no API key is configured
+    # rather than failing partway through.
     if not deps.llm_available():
         raise HTTPException(503, "ask echo needs an OpenAI key (set OPENAI_API_KEY)")
     from echo.rag.answer import ask as run_ask

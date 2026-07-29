@@ -42,6 +42,9 @@ def _raise_for_auth(r: httpx.Response) -> None:
 
 
 def _get(path: str, **params) -> dict:
+    """Send a GET request to the API with the given query params and return the parsed JSON body."""
+    # Drop any param that's None so it's left out of the URL entirely, instead
+    # of being sent as the literal text "None".
     params = {k: v for k, v in params.items() if v is not None}
     r = httpx.get(f"{BASE_URL}{path}", params=params, headers=_headers(), timeout=_TIMEOUT)
     _raise_for_auth(r)
@@ -49,6 +52,7 @@ def _get(path: str, **params) -> dict:
 
 
 def _post(path: str, payload: dict) -> dict:
+    """Send a POST request with a JSON body to the API and return the parsed JSON response."""
     r = httpx.post(f"{BASE_URL}{path}", json=payload, headers=_headers(), timeout=_TIMEOUT)
     _raise_for_auth(r)
     return r.json()
@@ -96,41 +100,49 @@ def register(email: str, password: str, full_name: str | None = None) -> dict:
 
 
 def me() -> dict:
+    """Fetch the currently logged-in user's profile from the API."""
     return _get("/auth/me")
 
 
 @st.cache_data(ttl=60)
 def health() -> dict:
+    """Check whether the backend, database, and LLM features are up. Returns the health status dict."""
     return _get("/health")
 
 
 @st.cache_data(ttl=60)
 def overview() -> dict:
+    """Fetch the headline overview stats (item counts, negative share, money at stake). Returns the stats dict."""
     return _get("/stats/overview")
 
 
 @st.cache_data(ttl=60)
 def volume(by: str = "category") -> dict:
+    """Fetch feedback volume grouped by the given dimension (e.g. category or source). Returns the grouped counts."""
     return _get("/stats/volume", by=by)
 
 
 @st.cache_data(ttl=60)
 def sentiment(by: str = "split") -> dict:
+    """Fetch sentiment stats, either as an overall split or a week-by-week trend. Returns the sentiment data."""
     return _get("/stats/sentiment", by=by)
 
 
 @st.cache_data(ttl=60)
 def crosstab() -> dict:
+    """Fetch the category-by-source cross-tabulation counts. Returns the crosstab data."""
     return _get("/stats/crosstab")
 
 
 @st.cache_data(ttl=60)
 def themes(week: str | None = None, limit: int = 10) -> dict:
+    """Fetch the top ranked themes for a given week (or the latest week if none given). Returns the themes list."""
     return _get("/themes", week=week, limit=limit)
 
 
 @st.cache_data(ttl=60)
 def urgent(week: str | None = None, limit: int = 20) -> dict:
+    """Fetch the urgent-items queue for a given week (or all-time if none given). Returns the urgent items list."""
     return _get("/urgent", week=week, limit=limit)
 
 
@@ -141,6 +153,7 @@ def generate_weekly_summary(week: str) -> dict:
 
 @st.cache_data(ttl=60)
 def eval_gold() -> dict:
+    """Fetch the model-evaluation report card (gold-set accuracy + silver-sentiment accuracy). Returns the report."""
     return _get("/eval/gold")
 
 

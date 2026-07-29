@@ -27,6 +27,7 @@ _CSV_COLUMNS = [
 
 
 def _messy_summary(it: CorpusItem) -> str:
+    """Build a short comma-separated string listing which messy flags (spam, sarcasm, duplicate, etc.) are set on this item."""
     flags = [k for k, v in it.messy.model_dump().items() if v is True]
     if it.messy.duplicate_of:
         flags.append("duplicate")
@@ -34,16 +35,19 @@ def _messy_summary(it: CorpusItem) -> str:
 
 
 def _is_edge(it: CorpusItem) -> bool:
+    """Return True if this item has any messy trait that makes it a tricky edge case worth prioritizing for labeling."""
     m = it.messy
     return any([m.sarcasm, m.off_topic, m.multi_topic, m.spam, m.gibberish,
                 m.non_target_language, m.urgency_floor_signal])
 
 
 def _review_stratum(it: CorpusItem) -> str:
+    """Return the stratification bucket name for a review item, based on its star score."""
     return f"review_score{int(it.source_score)}"
 
 
 def _survey_stratum(it: CorpusItem) -> str:
+    """Return the stratification bucket name for a survey item, based on whether it's score-only or its NPS band (detractor/passive/promoter)."""
     if it.messy.too_short:
         return "survey_score_only"
     s = int(it.source_score)
@@ -51,10 +55,12 @@ def _survey_stratum(it: CorpusItem) -> str:
 
 
 def _ticket_stratum(it: CorpusItem) -> str:
+    """Return the stratification bucket name for a ticket item, based on its intended category (or 'edge' if none)."""
     return f"ticket_{it.intended_category or 'edge'}"
 
 
 def _stratify(items: list[CorpusItem], rng: random.Random) -> dict[str, list[CorpusItem]]:
+    """Group items into stratification buckets by source type and score/category, sorting each bucket so tricky edge-case items come first."""
     buckets: dict[str, list[CorpusItem]] = {}
     for it in items:
         if it.source_type == "review":
@@ -71,6 +77,7 @@ def _stratify(items: list[CorpusItem], rng: random.Random) -> dict[str, list[Cor
 
 
 def build_gold_candidates(items: list[CorpusItem]) -> list[dict]:
+    """Pick a stratified, source-balanced sample of candidate items (target + reserve) for human gold labeling, and return them as export-ready row dicts with blank label columns."""
     rng = random.Random(utils.child_seed(config.SEED, "gold"))
     total = config.GOLD_TARGET + config.GOLD_RESERVE  # 60
     buckets = _stratify(items, rng)
@@ -113,6 +120,7 @@ def build_gold_candidates(items: list[CorpusItem]) -> list[dict]:
 
 
 def write_gold(items: list[CorpusItem]) -> dict:
+    """Build the gold candidate rows and write them to CSV, JSONL, and a labeling-instructions file, then return summary stats about the export."""
     import json
 
     config.PROCESSED_DIR.mkdir(parents=True, exist_ok=True)

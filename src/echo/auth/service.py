@@ -33,6 +33,7 @@ def _row_to_user(row) -> dict | None:
 
 
 def get_user_by_email(engine: Engine, email: str) -> dict | None:
+    """Look up a user by email (trimmed/lower-cased to match how it's stored). Returns the user dict, or None if not found."""
     with engine.connect() as c:
         row = c.execute(
             select(schema.users).where(schema.users.c.email == email.strip().lower())
@@ -41,6 +42,7 @@ def get_user_by_email(engine: Engine, email: str) -> dict | None:
 
 
 def get_user_by_id(engine: Engine, user_id: str) -> dict | None:
+    """Look up a user by their id. Returns the user dict, or None if not found."""
     with engine.connect() as c:
         row = c.execute(
             select(schema.users).where(schema.users.c.id == user_id)

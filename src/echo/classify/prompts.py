@@ -59,4 +59,5 @@ Base the rationale only on the text. Do not invent facts or numbers."""
 
 
 def build_messages(text: str) -> list[tuple[str, str]]:
+    """Wrap one feedback text into the (system prompt, user text) message pair the LLM expects."""
     return [("system", SYSTEM), ("user", text)]

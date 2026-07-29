@@ -16,6 +16,7 @@ from echo.embed import nearest, run
 
 
 def _verify(n: int = 3, k: int = 4) -> None:
+    """Print a handful of sample feedback items alongside their nearest semantic neighbours, as a quick sanity check that similar-meaning items really do end up close together."""
     engine = create_engine(config.settings.database_url)
     e, f = vector.embeddings, schema.feedback
     with engine.connect() as c:
@@ -31,6 +32,7 @@ def _verify(n: int = 3, k: int = 4) -> None:
 
 
 def main() -> int:
+    """Parse command-line options and either run the embedding batch job or print the neighbour-verification sample."""
     ap = argparse.ArgumentParser(prog="echo.embed")
     ap.add_argument("--limit", type=int, default=None, help="max texted items (dry-run)")
     ap.add_argument("--verify", action="store_true", help="print cosine neighbours instead of embedding")

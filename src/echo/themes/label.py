@@ -17,6 +17,7 @@ from echo.themes.prompts import build_messages, is_generic
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=20), reraise=True)
 def _invoke(structured_llm, messages):
+    """Call the LLM once with the given messages (auto-retrying on failure), and return the parsed label plus token counts and latency."""
     t0 = time.perf_counter()
     out = structured_llm.invoke(messages)
     latency = int((time.perf_counter() - t0) * 1000)

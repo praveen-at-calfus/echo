@@ -28,11 +28,13 @@ _PRICE = 0.02  # text-embedding-3-small, USD per 1M tokens
 
 @retry(stop=stop_after_attempt(4), wait=wait_exponential(multiplier=1, min=2, max=30), reraise=True)
 def _embed_batch(client, texts: list[str]) -> tuple[list[list[float]], int]:
+    """Call OpenAI once to turn a batch of texts into vectors (retrying automatically on transient failures); returns the vectors and the total tokens billed."""
     resp = client.embeddings.create(model=config.EMBED_MODEL, input=texts, dimensions=config.EMBED_DIM)
     return [d.embedding for d in resp.data], int(resp.usage.total_tokens)
 
 
 def run(limit: int | None = None) -> dict:
+    """Embed every feedback item that doesn't have a vector yet (optionally capped at `limit` items), store the vectors in Postgres, and return a summary dict of what was embedded and its cost."""
     if config.settings.use_offline:
         raise SystemExit("embed needs OPENAI_API_KEY (set it in .env).")
     model = config.EMBED_MODEL
@@ -99,6 +101,7 @@ _CLIENT = None
 
 
 def _client():
+    """Lazily create and cache a single OpenAI client, reused by every call to embed_texts()."""
     global _CLIENT
     if _CLIENT is None:
         from openai import OpenAI

@@ -52,6 +52,8 @@ st.write(s["narrative"])
 
 c1, c2, c3 = st.columns(3)
 delta = None
+# Only compute a week-over-week percentage change if there was a previous week
+# to compare against (otherwise it would divide by zero).
 if s["volume_prev"]:
     delta = f"{(s['volume_total'] - s['volume_prev']) / s['volume_prev'] * 100:+.1f}% vs last week"
 c1.metric("Volume", f"{s['volume_total']:,}", delta)

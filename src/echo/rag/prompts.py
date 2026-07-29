@@ -46,6 +46,9 @@ HARD RULES:
 
 
 def build_messages(question: str, snippets: list[dict]) -> list[tuple[str, str]]:
+    """Build the system + user chat messages sent to the LLM: the ground rules above, plus the retrieved feedback snippets serialized as JSON so the model can read and cite them."""
+    # Truncate each snippet's text to keep the prompt short and cheap; the full
+    # text isn't needed for the model to understand and cite the item.
     payload = json.dumps(
         [{"item_id": s["item_id"], "source": s["source_type"], "category": s.get("category"),
           "sentiment": s.get("sentiment"), "urgency": s.get("urgency"), "text": s["text"][:500]}

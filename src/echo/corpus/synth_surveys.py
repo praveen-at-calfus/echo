@@ -24,10 +24,12 @@ _PROBLEM_FRACTION = 0.30
 
 
 def _sentiment(nps: int) -> str:
+    """Classify an NPS score (0-10) into detractor, passive, or promoter."""
     return "detractor" if nps <= config.NPS_NEG_MAX else ("passive" if nps <= 6 else "promoter")
 
 
 def _silver(nps: int):
+    """Derive a coarse negative/positive silver label from an NPS score, or None if it falls in the neutral middle band."""
     if nps <= config.NPS_NEG_MAX:
         return "negative"
     if nps >= config.NPS_POS_MIN:
@@ -36,6 +38,7 @@ def _silver(nps: int):
 
 
 def _nps(rng: np.random.Generator, row) -> int:
+    """Pick a plausible NPS score (0-10) for this order: reuse the real review's star rating band if one exists, otherwise infer a range from the fulfillment outcome, otherwise fall back to a generally-positive random default."""
     if not pd.isna(row.review_score):
         lo, hi = config.STAR_TO_NPS_BAND[int(row.review_score)]
         return int(rng.integers(lo, hi + 1))
@@ -44,11 +47,14 @@ def _nps(rng: np.random.Generator, row) -> int:
         return int(rng.integers(0, 5))
     if fo == "late_delivered":
         return int(rng.integers(3, 7))
+    # No review and no known problem: skew toward a good score, with a smaller chance of a
+    # middling or lower one, so surveys aren't unrealistically uniform.
     r = rng.random()
     return int(rng.integers(9, 11)) if r < 0.6 else (int(rng.integers(7, 9)) if r < 0.85 else int(rng.integers(5, 7)))
 
 
 def _timestamp(rng: np.random.Generator, row):
+    """Pick a plausible created_at date for a survey response, shortly after delivery (or purchase if not delivered), clamped to the valid date range."""
     base = row.delivered_ts if not pd.isna(row.delivered_ts) else row.purchase_ts
     if pd.isna(base):
         base = pd.Timestamp(config.DATE_MIN) + timedelta(days=int(rng.integers(0, 700)))
@@ -58,11 +64,13 @@ def _timestamp(rng: np.random.Generator, row):
 
 
 def _jitter(dt, rng: np.random.Generator):
+    """Nudge a datetime forward by 0-2 random days (used to space out near-duplicate survey responses) without exceeding the max allowed date."""
     out = dt + timedelta(days=int(rng.integers(0, 3)))
     return min(out, config.DATE_MAX)
 
 
 def _sample_orders(econ: pd.DataFrame, n: int) -> pd.DataFrame:
+    """Pick n orders to ground surveys on: about 30% deliberately from orders with problems (late/canceled/unavailable/low review score) so surveys cover the full sentiment range, the rest from general delivered orders, then shuffle the result."""
     rng = np.random.default_rng(utils.child_seed(config.SEED, "survey-pool"))
     problem = econ[
         econ["fulfillment_outcome"].isin(["late_delivered", "canceled", "unavailable", "shipped_not_delivered"])
@@ -74,6 +82,7 @@ def _sample_orders(econ: pd.DataFrame, n: int) -> pd.DataFrame:
     n_general = n - n_problem
 
     def take(pool, k):
+        """Randomly draw k rows from a pool, reusing rows if the pool is smaller than k."""
         return pool.iloc[rng.choice(len(pool), size=k, replace=k > len(pool))]
 
     rows = pd.concat([take(problem, n_problem), take(general, n_general)])
@@ -81,6 +90,7 @@ def _sample_orders(econ: pd.DataFrame, n: int) -> pd.DataFrame:
 
 
 def build_surveys(econ: pd.DataFrame, generator, guard, limit: int | None = None, build_id: str | None = None):
+    """Generate the full set of synthetic post-purchase surveys grounded on real orders, and return the list of items plus summary stats."""
     n = config.N_SURVEYS if limit is None else limit
     rows = _sample_orders(econ, n)
 
@@ -187,6 +197,7 @@ def build_surveys(econ: pd.DataFrame, generator, guard, limit: int | None = None
 
 
 def _emit_unique(generator, guard, brief, seed):
+    """Generate text for this brief, retrying up to 3 times with different sub-seeds if the diversity guard flags an unintended duplicate, and return the text with its generation record."""
     for attempt in range(3):
         s = seed if attempt == 0 else utils.child_seed(seed, "retry", attempt)
         rec = generator.generate({**brief, "seed": s}, s)
@@ -197,8 +208,10 @@ def _emit_unique(generator, guard, brief, seed):
 
 
 def _f(v):
+    """Convert a value to a plain float, or return None if it is missing/NaN."""
     return None if v is None or pd.isna(v) else float(v)
 
 
 def _s(v):
+    """Convert a value to a plain string, or return None if it is missing/NaN."""
     return None if v is None or (isinstance(v, float) and pd.isna(v)) else str(v)

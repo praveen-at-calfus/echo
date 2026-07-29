@@ -22,8 +22,11 @@ ROLE_LABELS = {"company": "Company", "gen_pop": "Feedback user"}
 
 
 def _opinion_label(net: float | None) -> str:
+    """Turn a net-sentiment score (positive share minus negative share) into a plain label. Returns the label string."""
     if net is None:
         return "No data"
+    # A small dead zone around zero (+/-0.15) counts as "Mixed" rather than
+    # forcing every user into a strict Positive/Negative bucket on a tiny nudge.
     if net > 0.15:
         return "Positive"
     if net < -0.15:
@@ -50,6 +53,9 @@ c3.metric("Total user submissions", f"{totals['submissions']:,}")
 
 st.divider()
 st.subheader("All users")
+# "Avg urgency" is always formatted as a string (even the "-" for no data) so
+# the whole column has one consistent type; mixing real numbers and a "-"
+# string in the same column previously broke the table's rendering.
 rows = [{
     "Email": u["email"],
     "Role": ROLE_LABELS.get(u["role"], u["role"]),
