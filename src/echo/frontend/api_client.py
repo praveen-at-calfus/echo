@@ -19,17 +19,69 @@ BASE_URL = os.environ.get("ECHO_API_URL", "http://localhost:8000")
 _TIMEOUT = 30.0
 
 
+class ApiError(Exception):
+    """A friendly, already-explained API failure to show the user directly."""
+
+
+def _headers() -> dict:
+    """Attach the logged-in user's bearer token (if any) to every request."""
+    user = st.session_state.get("auth_user")
+    if user and user.get("token"):
+        return {"Authorization": f"Bearer {user['token']}"}
+    return {}
+
+
+def _raise_for_auth(r: httpx.Response) -> None:
+    """Map auth failures to a clear message; expire the session on a 401."""
+    if r.status_code == 401:
+        st.session_state.pop("auth_user", None)  # force a fresh login
+        raise ApiError("Your session has expired. Please log in again.")
+    if r.status_code == 403:
+        raise ApiError("Your account isn't allowed to view this resource.")
+    r.raise_for_status()
+
+
 def _get(path: str, **params) -> dict:
     params = {k: v for k, v in params.items() if v is not None}
-    r = httpx.get(f"{BASE_URL}{path}", params=params, timeout=_TIMEOUT)
-    r.raise_for_status()
+    r = httpx.get(f"{BASE_URL}{path}", params=params, headers=_headers(), timeout=_TIMEOUT)
+    _raise_for_auth(r)
     return r.json()
 
 
 def _post(path: str, payload: dict) -> dict:
-    r = httpx.post(f"{BASE_URL}{path}", json=payload, timeout=_TIMEOUT)
+    r = httpx.post(f"{BASE_URL}{path}", json=payload, headers=_headers(), timeout=_TIMEOUT)
+    _raise_for_auth(r)
+    return r.json()
+
+
+# --------------------------------------------------------------------------- #
+# Auth — login/register/whoami. Not cached (each returns a per-user token).
+# --------------------------------------------------------------------------- #
+def login(email: str, password: str) -> dict:
+    """OAuth2 password form (username = email). Returns {access_token, role}."""
+    r = httpx.post(f"{BASE_URL}/auth/login",
+                   data={"username": email, "password": password}, timeout=_TIMEOUT)
+    if r.status_code == 401:
+        raise ApiError("Incorrect email or password.")
     r.raise_for_status()
     return r.json()
+
+
+def register(email: str, password: str, full_name: str | None = None) -> dict:
+    """Self-register a feedback-giver (GEN-POP) account. Returns {access_token, role}."""
+    r = httpx.post(f"{BASE_URL}/auth/register",
+                   json={"email": email, "password": password, "full_name": full_name},
+                   timeout=_TIMEOUT)
+    if r.status_code == 409:
+        raise ApiError("That email is already registered. Try logging in instead.")
+    if r.status_code == 422:
+        raise ApiError("Enter a valid email and a password of at least 6 characters.")
+    r.raise_for_status()
+    return r.json()
+
+
+def me() -> dict:
+    return _get("/auth/me")
 
 
 @st.cache_data(ttl=60)
@@ -85,6 +137,13 @@ def submit_feedback(text: str, source_type: str = "ticket",
     return _post("/feedback", {
         "text": text, "source_type": source_type, "source_score": source_score, "source_scale": source_scale,
         "order_value": order_value, "refund_amount": refund_amount, "fulfillment_outcome": fulfillment_outcome})
+
+
+def list_feedback(limit: int = 50, offset: int = 0, **filters) -> dict:
+    """GET /feedback — deliberately UNCACHED: gen_pop users see only their own
+    rows, and st.cache_data is process-global across browser sessions, so caching
+    a per-user list would leak one user's submissions to another."""
+    return _get("/feedback", limit=limit, offset=offset, **filters)
 
 
 def ask(question: str, k: int | None = None) -> dict:

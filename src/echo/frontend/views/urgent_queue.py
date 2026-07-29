@@ -1,18 +1,19 @@
-"""Urgent Queue — items at/above the urgency floor, ranked by $ exposure."""
+"""Urgent Queue - items at/above the urgency floor, ranked by $ exposure.
+
+Runs as a page of the router entrypoint (app.py) via st.navigation; page config,
+auth-gating, and the sidebar are owned by the router, not this script.
+"""
 
 from __future__ import annotations
 
 import api_client
 import streamlit as st
-from common import sidebar_status
 
-st.set_page_config(page_title="echo — Urgent Queue", page_icon="🚨", layout="wide")
-sidebar_status()
+st.title("Urgent Queue")
+st.caption("Urgency at or above the floor, ranked by per-item Direct Exposure: the SQL-computed "
+           "dollar cost of that item.")
 
-st.title("🚨 Urgent Queue")
-st.caption("Urgency ≥ floor, ranked by per-item Direct Exposure — the SQL-computed dollar cost of that item.")
-
-week = st.text_input("Week (YYYY-MM-DD) — blank for all-time", value="")
+week = st.text_input("Week (YYYY-MM-DD), blank for all-time", value="")
 limit = st.slider("How many items", 5, 100, 20)
 
 try:

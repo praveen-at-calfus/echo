@@ -267,6 +267,19 @@ RAG_PROMPT_VERSION = "rag_v1"
 RAG_TEMPERATURE = 0.2   # a little latitude for prose; the model never emits a figure
 RAG_TOP_K = 8           # feedback items retrieved per question
 
+# --------------------------------------------------------------------------- #
+# Authentication (JWT + role-based access)
+# --------------------------------------------------------------------------- #
+# Two roles, stored in the `users` table: GEN-POP end users who submit feedback,
+# and COMPANY staff who see all feedback + analytics. Tokens are signed HS256.
+ROLE_GEN_POP = "gen_pop"
+ROLE_COMPANY = "company"
+ROLES = (ROLE_GEN_POP, ROLE_COMPANY)
+JWT_ALGORITHM = "HS256"
+# The insecure default below MUST be overridden in production (set JWT_SECRET in
+# .env). config.settings warns at import time when it's still the dev default.
+JWT_DEV_SECRET = "dev-insecure-change-me"  # noqa: S105 (documented placeholder, not a real secret)
+
 
 class Settings(BaseSettings):
     """Environment-driven settings (``.env`` + real env vars)."""
@@ -284,6 +297,15 @@ class Settings(BaseSettings):
         default_factory=lambda: f"postgresql+psycopg://{getpass.getuser()}@localhost:5432/echo",
         alias="DATABASE_URL",
     )
+    # JWT auth: signing key + token lifetime. Default secret is insecure on purpose
+    # (see JWT_DEV_SECRET) — override with JWT_SECRET in .env for anything real.
+    jwt_secret: str = Field(default=JWT_DEV_SECRET, alias="JWT_SECRET")
+    jwt_expire_minutes: int = Field(default=720, alias="JWT_EXPIRE_MINUTES")  # 12h
+    # Demo credentials seeded by `python -m echo.auth seed` (overridable in .env).
+    seed_company_email: str = Field(default="admin@echo.example", alias="SEED_COMPANY_EMAIL")
+    seed_company_password: str = Field(default="admin123", alias="SEED_COMPANY_PASSWORD")
+    seed_genpop_email: str = Field(default="user@echo.example", alias="SEED_GENPOP_EMAIL")
+    seed_genpop_password: str = Field(default="user123", alias="SEED_GENPOP_PASSWORD")
 
     @property
     def use_offline(self) -> bool:
@@ -292,3 +314,12 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+if settings.jwt_secret == JWT_DEV_SECRET:
+    import warnings
+
+    warnings.warn(
+        "JWT_SECRET is the insecure dev default — set JWT_SECRET in .env before "
+        "deploying (tokens are trivially forgeable otherwise).",
+        stacklevel=2,
+    )

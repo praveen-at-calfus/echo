@@ -6,7 +6,7 @@ echo ingests raw, messy customer feedback from three channels — product review
 
 > **The one thing that makes echo different:** it doesn't just label feedback — it **routes each issue to the team that owns it and attaches the money at stake**, so "we got a lot of complaints" becomes *"Shipping complaints are 34% of negative volume, up 20% week-over-week, with ~$48k of refund exposure — owned by Logistics."*
 
-> **Project status:** design specification. This document is the source of truth for the build; implementation follows.
+> **Project status:** built and running. This document is the design source of truth; the full MVP (corpus, classify, money, embeddings, themes, weekly summary, API, RAG, Streamlit dashboard, Docker packaging) plus **JWT authentication with role-based access** is implemented. `CLAUDE.md` holds the authoritative per-stage live status. See **[Running echo locally](#running-echo-locally-for-developers)** to get started.
 
 ---
 
@@ -245,22 +245,74 @@ Target: readable aloud in under 90 seconds, every number traceable to SQL. Examp
 
 ## Dashboard & API
 
-**FastAPI** backend:
+**FastAPI** backend. Every request except the public ones below carries a **JWT bearer token** (see [Authentication & roles](#authentication--roles)); the *Access* column is enforced **server-side** (a wrong role gets a `403`, even when driving the endpoint from Swagger UI at `/docs`).
 
-| Endpoint | Purpose |
-|---|---|
-| `POST /feedback` | Ingest + analyze a single item live |
-| `GET /feedback` | List / filter analyzed feedback |
-| `GET /themes` | Themes ranked by revenue-at-risk |
-| `GET /urgent` | Urgent queue ranked by $ exposure |
-| `GET /summary/weekly` | Latest weekly summary |
-| `POST /ask` | RAG Q&A (bonus) |
+| Endpoint | Purpose | Access |
+|---|---|---|
+| `POST /auth/register` | Self-register a feedback (GEN-POP) account | public |
+| `POST /auth/login` | Exchange email + password for a JWT (OAuth2 password form) | public |
+| `GET /auth/me` | The current user | any signed-in |
+| `GET /health`, `GET /` | DB + LLM + build id | public |
+| `POST /feedback` | Ingest + analyze a single item live | signed-in (GEN-POP or COMPANY) |
+| `GET /feedback` | List / filter analyzed feedback | COMPANY = all; GEN-POP = own only |
+| `GET /stats/{overview,volume,sentiment,crosstab}` | Aggregate stats | COMPANY |
+| `GET /themes` | Themes ranked by revenue-at-risk | COMPANY |
+| `GET /urgent` | Urgent queue ranked by $ exposure | COMPANY |
+| `GET/POST /summary/weekly` | Read / generate the weekly summary | COMPANY |
+| `POST /ask` | RAG Q&A (bonus) | COMPANY |
+| `GET /eval/gold` | Model-evaluation report card | COMPANY |
 
-**Streamlit** dashboard — a **thin client** that talks only to the API (never to the DB or LLM directly):
-- Volume by category & source, sentiment trend, urgent queue ranked by $ exposure, top themes by revenue-at-risk.
-- Every chart has a title, axis labels, legend, and date range — interpretable by a stakeholder with zero explanation.
-- Source-sliced cross-tabs (e.g. "Bug/Product-Quality themes are ticket-heavy; feature asks are survey-heavy").
-- Live feedback submission box.
+### Authentication & roles
+
+echo has two kinds of user, stored in one `users` table:
+
+- **GEN-POP** — end users who *feed a feedback*. Can submit (`POST /feedback`) and view **only the feedback they submitted**. Public sign-up (`POST /auth/register`) always creates this role.
+- **COMPANY** — staff/admins who *see all feedback and analytics*. Full read access to every analytics endpoint. Company accounts are **not** self-registerable; they are provisioned by staff via `python -m echo.auth create-user ... --role company` (or the `seed` command).
+
+Mechanics: passwords are bcrypt-hashed; tokens are signed HS256 (PyJWT) with `JWT_SECRET`. The login route uses the OAuth2 password flow, so Swagger UI shows an **Authorize** button. The security boundary is server-side — the frontend only decides what to *show*, never what's *allowed*. `feedback.submitter_id` (a FK to `users.id`, NULL for the batch corpus) powers GEN-POP "view own".
+
+**Streamlit** dashboard — a **thin client** that talks only to the API (never to the DB or LLM directly), organized as a single router entrypoint (`app.py` + `st.navigation`) with the content pages under `views/`:
+- **Landing / login screen** for signed-out visitors (no sidebar): the `echo` wordmark with animated side arc-waves, and a Login button that reveals login / create-account.
+- **GEN-POP** sees a single **Feed a feedback** page (submission form + their own past submissions) with a top-right logout and no status chrome.
+- **COMPANY** sees the analytics pages in the sidebar — Overview, Urgent Queue, Themes, Weekly Summary, Ask echo, Model Evaluation — plus a DB/LLM status box. Every chart has a title, axis labels, legend, and date range; volume by category & source, sentiment trend, urgent queue by $ exposure, top themes by revenue-at-risk, and source-sliced cross-tabs.
+- **UI house style:** no emojis and no em dashes in any user-facing string.
+
+---
+
+## Running echo locally (for developers)
+
+Python 3.13. The `echo` package is run from `src/` (either `PYTHONPATH=src` or `pip install -e .`). `make help` lists every command as a shorter `make` target.
+
+```bash
+python3.13 -m venv .venv
+.venv/bin/pip install -e ".[corpus,db,pipeline,app,frontend,dev]"
+cp .env.example .env          # then set values (see below)
+
+# 1) Load the corpus into Postgres (needs the Olist data in data/raw/ first) and seed logins:
+PYTHONPATH=src .venv/bin/python -m echo.db            # (re)load data/processed -> Postgres
+PYTHONPATH=src .venv/bin/python -m echo.auth seed     # create the demo company + gen_pop accounts
+
+# 2) Run the two services (local is the day-to-day way to run echo):
+PYTHONPATH=src .venv/bin/python -m echo.api           # backend, http://localhost:8000 (docs at /docs)
+ECHO_API_URL=http://localhost:8000 PYTHONPATH=src .venv/bin/python -m echo.frontend   # dashboard :8501
+```
+
+**Environment (`.env`):**
+- `OPENAI_API_KEY` — only needed for the live LLM features (submit, generate summary, Ask echo); reads/analytics work without it.
+- `JWT_SECRET` — **set this.** It defaults to an insecure dev value and warns at import; anything real must override it. Optional: `JWT_EXPIRE_MINUTES` (default 720).
+- `SEED_COMPANY_EMAIL` / `SEED_COMPANY_PASSWORD` / `SEED_GENPOP_EMAIL` / `SEED_GENPOP_PASSWORD` — accounts created by `python -m echo.auth seed`. Defaults: `admin@echo.example` / `admin123` (company) and `user@echo.example` / `user123` (gen_pop). Change these before any real use.
+
+**Auth CLI:** `python -m echo.auth seed | create-user --email ... --password ... --role {company,gen_pop} [--name ...] | list`.
+
+**Docker (packaging verification only):** the app ships as two images plus a Postgres+pgvector container.
+
+```bash
+docker compose up --build                                   # -> http://localhost:8501
+docker compose exec backend python -m echo.auth seed        # the seed DB dump has no users; seed them
+docker compose down                                         # tear down when finished
+```
+
+> **Local vs. Docker (important):** local is the primary instance; Docker is only for verifying the packaged deployment, then torn down — never run both at once. They collide on ports 8000/8501/5432 and are *separate databases*, so data submitted to one won't appear in the other. Run **`./scripts/status.sh`** to see which instance owns each port before switching.
 
 ---
 
@@ -280,7 +332,8 @@ Target: readable aloud in under 90 seconds, every number traceable to SQL. Examp
 | LLM | OpenAI API (chat completions, `temperature=0`, fixed `seed`) |
 | Orchestration | LangChain (LCEL chains, Pydantic structured output) |
 | Backend | FastAPI — **backend container** (API + full pipeline) |
-| Relational DB | PostgreSQL (SQLAlchemy ORM + Alembic migrations) |
+| Auth | JWT bearer (PyJWT, HS256) + bcrypt password hashing; OAuth2 password flow; two roles (GEN-POP / COMPANY), server-side guards |
+| Relational DB | PostgreSQL via SQLAlchemy **Core** + parameterized SQL (no ORM session); schema managed by idempotent `metadata.create_all` at startup — no Alembic |
 | Vector search | **pgvector** — a PostgreSQL extension; embeddings live in the same DB (no separate vector service) |
 | Embeddings | OpenAI embeddings |
 | Dashboard | Streamlit — **frontend container** (thin API client) |
@@ -296,7 +349,7 @@ Target: readable aloud in under 90 seconds, every number traceable to SQL. Examp
 
 ### Data stores
 
-- **Postgres (relational):** `feedback` (immutable raw) · `analysis` (versioned — stores `model_name` + `prompt_version`; re-running a new prompt writes a new row, never mutates raw data) · `llm_calls` (audit: input, output, latency, tokens) · `themes` · `weekly_summary`.
+- **Postgres (relational):** `users` (accounts + role for auth) · `feedback` (immutable raw; `submitter_id` FK links a live item to the user who submitted it) · `analysis` (versioned — stores `model_name` + `prompt_version`; re-running a new prompt writes a new row, never mutates raw data) · `llm_calls` (audit: input, output, latency, tokens) · `themes` · `weekly_summary`.
 - **Postgres (pgvector):** feedback embeddings + metadata for clustering and RAG retrieval — the **same database**, queried by vector similarity.
 
 ---
@@ -306,7 +359,8 @@ Target: readable aloud in under 90 seconds, every number traceable to SQL. Examp
 - Validate cheap things before expensive LLM calls; retry ×3 with exponential backoff on API errors, then a clean human-readable error.
 - Failed items are stored `status: pending` and re-processed later — an outage loses nothing.
 - Vector index unavailable (e.g. embeddings not built yet) → classification still works; only themes/RAG report degraded.
-- No hardcoded secrets (env only); ORM prevents SQL injection; all user input validated at the API boundary.
+- No hardcoded secrets (env only; `JWT_SECRET` must be overridden from its dev default); parameterized SQL (SQLAlchemy Core) prevents injection; all user input validated at the API boundary.
+- JWT bearer auth with server-side role guards (a wrong role gets `403`, not just a hidden UI element); passwords are only ever stored bcrypt-hashed.
 
 ---
 

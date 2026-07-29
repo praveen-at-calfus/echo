@@ -11,7 +11,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from langdetect import DetectorFactory, LangDetectException, detect
 from sqlalchemy import insert, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -46,6 +46,7 @@ def list_feedback(
     q: str | None = Query(None, description="case-insensitive substring of the text"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    user: dict = Depends(deps.get_current_user),
 ) -> dict:
     where = ["a.model_name = :model", "a.prompt_version = :pv"]
     p: dict = {"model": deps.MODEL, "pv": deps.PROMPT_VERSION, "limit": limit, "offset": offset}
@@ -58,6 +59,10 @@ def list_feedback(
         if val is not None:
             where.append(cond)
             p[key] = val
+    # GEN-POP users only ever see the feedback they submitted; COMPANY sees all.
+    if user["role"] == config.ROLE_GEN_POP:
+        where.append("f.submitter_id = :uid")
+        p["uid"] = user["id"]
     clause = " AND ".join(where)
 
     with deps.get_engine().connect() as c:
@@ -75,7 +80,7 @@ def list_feedback(
 
 
 @router.post("/feedback", status_code=201)
-def create_feedback(item: FeedbackIn) -> dict:
+def create_feedback(item: FeedbackIn, user: dict = Depends(deps.get_current_user)) -> dict:
     if not deps.llm_available():
         raise HTTPException(503, "live submission needs an OpenAI key (set OPENAI_API_KEY)")
     from echo.classify.crosscheck import disagreement
@@ -97,7 +102,8 @@ def create_feedback(item: FeedbackIn) -> dict:
             "source_score": item.source_score, "source_scale": item.source_scale,
             "order_value": item.order_value, "refund_amount": item.refund_amount,
             "fulfillment_outcome": item.fulfillment_outcome,
-            "created_at": now, "language": _detect_language(item.text), "synthetic": False})
+            "created_at": now, "language": _detect_language(item.text), "synthetic": False,
+            "submitter_id": user["id"]})
         c.execute(insert(schema.analysis), {
             "item_id": item_id, "category": analysis["category"], "sentiment": analysis["sentiment"],
             "urgency": analysis["urgency"], "rationale": analysis["rationale"],

@@ -41,3 +41,36 @@ class WeeklySummaryIn(BaseModel):
     """Which week to generate a weekly summary for (POST /summary/weekly)."""
 
     week: str = Field(description="ISO week start, e.g. 2018-03-05", pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+# --------------------------------------------------------------------------- #
+# Auth
+# --------------------------------------------------------------------------- #
+# A pragmatic email check (no email-validator dependency): one @, a dot in the
+# domain. Good enough to reject obvious junk without pulling in a new library.
+_EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+
+
+class RegisterIn(BaseModel):
+    """Public self-registration (POST /auth/register). Always creates a GEN-POP."""
+
+    email: str = Field(pattern=_EMAIL_PATTERN, max_length=254)
+    password: str = Field(min_length=6, max_length=200)
+    full_name: str | None = Field(default=None, max_length=120)
+
+
+class TokenOut(BaseModel):
+    """What /auth/login and /auth/register return: a bearer token + the role."""
+
+    access_token: str
+    token_type: str = "bearer"
+    role: str
+
+
+class UserOut(BaseModel):
+    """The current user (GET /auth/me) — never includes the password hash."""
+
+    id: str
+    email: str
+    role: str
+    full_name: str | None = None

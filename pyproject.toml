@@ -30,8 +30,10 @@ corpus = [
 db = ["sqlalchemy>=2.0", "psycopg[binary]>=3.1"]
 # Pipeline stages that do vector math (embed, themes clustering).
 pipeline = ["pgvector>=0.3", "numpy>=1.26", "scikit-learn>=1.4"]
-# FastAPI backend (uvicorn echo.api.main:app).
-app = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "httpx>=0.27", "langdetect>=1.0.9"]
+# FastAPI backend (uvicorn echo.api.main:app). JWT auth: pyjwt signs/verifies
+# tokens, bcrypt hashes passwords, python-multipart handles the OAuth2 login form.
+app = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "httpx>=0.27", "langdetect>=1.0.9",
+       "pyjwt>=2.8", "bcrypt>=4.1", "python-multipart>=0.0.9"]
 # Streamlit dashboard — a thin client, talks only to the API.
 frontend = ["streamlit>=1.35", "httpx>=0.27", "plotly>=5.22", "pandas>=2.2"]
 dev = ["ruff>=0.5", "pytest>=8"]
@@ -47,3 +49,9 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "W"]
 ignore = ["E501"]  # line length handled by formatter; long grounded strings are fine
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection idiom is `= Depends(...)` in argument defaults;
+# whitelist it so B008 doesn't flag the canonical pattern (Query/Path/etc. are
+# already on ruff's built-in immutable-calls allowlist).
+extend-immutable-calls = ["fastapi.Depends"]

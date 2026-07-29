@@ -13,6 +13,7 @@ from __future__ import annotations
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Column,
     Date,
     DateTime,
@@ -31,6 +32,23 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 
 metadata = MetaData()
+
+# --------------------------------------------------------------------------- #
+# Auth — application users. Two roles: GEN-POP end users who submit feedback,
+# and COMPANY staff who read all feedback + analytics. One row per account.
+# --------------------------------------------------------------------------- #
+users = Table(
+    "users",
+    metadata,
+    Column("id", String, primary_key=True),          # uuid4, matching the item_id convention
+    Column("email", String, nullable=False, unique=True, index=True),  # the login identifier
+    Column("password_hash", String, nullable=False),  # bcrypt hash (never the raw password)
+    Column("role", String, nullable=False),            # 'gen_pop' | 'company'
+    Column("full_name", String),
+    Column("is_active", Boolean, nullable=False, server_default="true"),
+    Column("created_at", DateTime, server_default=func.now()),
+    CheckConstraint("role IN ('gen_pop', 'company')", name="ck_users_role"),
+)
 
 order_economics = Table(
     "order_economics",
@@ -107,6 +125,10 @@ feedback = Table(
     Column("duplicate_of", String),
     Column("provenance", JSONB),
     Column("messy", JSONB),
+    # Who submitted this live (NULL for the 15k batch corpus). Powers GEN-POP
+    # users' "view only my own feedback". Added to existing DBs via an idempotent
+    # ALTER in the API lifespan hook — create_all won't alter an extant table.
+    Column("submitter_id", String, ForeignKey("users.id"), index=True),
 )
 
 gold_candidates = Table(
