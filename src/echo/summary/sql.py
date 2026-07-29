@@ -16,6 +16,7 @@ from echo.money.engine import week_bounds
 
 
 def _version(model: str | None, pv: str | None) -> tuple[str, str]:
+    """Fill in the default model name and classify prompt version for any that weren't given, and return both."""
     return (model or config.settings.model, pv or config.CLASSIFY_PROMPT_VERSION)
 
 
@@ -26,6 +27,7 @@ def prev_week(week: str) -> str:
 
 
 def _counts(engine, week: str, model: str, pv: str) -> dict:
+    """Count total items and how many are positive/neutral/negative for one week. Returns a dict of those counts."""
     start, end = week_bounds(week)
     sql = text("""
         SELECT count(*) AS total,

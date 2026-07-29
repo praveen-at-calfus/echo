@@ -14,10 +14,12 @@ from echo.money import engine
 
 
 def _fmt(n: float) -> str:
+    """Format a number as a Brazilian-real currency string with thousands separators, e.g. R$1,234."""
     return f"R${n:,.0f}"
 
 
 def main() -> int:
+    """Parse command-line arguments, fetch the money report for the chosen week, and print it to the console."""
     ap = argparse.ArgumentParser(prog="echo.money")
     ap.add_argument("--week", default=None, help="ISO week start YYYY-MM-DD (default: all-time)")
     ap.add_argument("--demo-week", action="store_true", help=f"use DEMO_WEEK ({config.DEMO_WEEK})")

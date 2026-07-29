@@ -27,4 +27,6 @@ class Classification(BaseModel):
     category: Category
     sentiment: AnalysisSentiment
     urgency: Urgency
+    # A minimum length keeps the model from returning an empty/near-empty reason; a maximum
+    # length keeps rationales short and cheap rather than long rambling explanations.
     rationale: str = Field(min_length=3, max_length=400)

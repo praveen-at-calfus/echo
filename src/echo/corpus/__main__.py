@@ -30,6 +30,7 @@ from echo.schemas import envelope
 
 
 def main() -> int:
+    """Run the corpus-builder CLI: parse arguments, build order economics, synthesize/sample all three item sources, write outputs, and verify the result; return the process exit code."""
     ap = argparse.ArgumentParser(prog="echo.corpus")
     ap.add_argument("--force", action="store_true", help="rebuild order_economics from CSVs")
     ap.add_argument("--limit", type=int, default=None, help="items per source (dry-run)")

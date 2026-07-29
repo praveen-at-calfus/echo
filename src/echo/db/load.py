@@ -38,6 +38,9 @@ def _clean(v):
     if isinstance(v, float) and math.isnan(v):
         return None
     try:
+        # pd.isna covers pandas' other "missing" markers (NaT for missing dates, pandas NA),
+        # which plain math.isnan above doesn't catch. It can raise on some inputs (e.g. arrays),
+        # hence the try/except instead of just calling it directly.
         if pd.isna(v):
             return None
     except (TypeError, ValueError):
@@ -45,6 +48,8 @@ def _clean(v):
     if isinstance(v, pd.Timestamp):
         return v.to_pydatetime()
     if hasattr(v, "item"):
+        # numpy scalar types (e.g. numpy.int64) aren't plain Python types the DB driver
+        # understands; .item() converts them to the equivalent built-in Python type.
         try:
             return v.item()
         except Exception:  # noqa: BLE001
@@ -53,6 +58,7 @@ def _clean(v):
 
 
 def _dt(s):
+    """Parse an ISO-format datetime string into a datetime object, or return None if the input is empty/falsy."""
     return datetime.fromisoformat(s) if s else None
 
 
@@ -62,9 +68,14 @@ def _nonul(v):
 
 
 def _feedback_rows():
+    """Read corpus.jsonl and yield one dict per feedback item, shaped to match the feedback table's columns."""
     for it in utils.read_jsonl(config.PROCESSED_DIR / "corpus.jsonl"):
         prov = it.get("provenance") or {}
         messy = it.get("messy") or {}
+        # provenance and messy are nested objects in the source JSON; here we both flatten
+        # their fields into their own top-level columns (so SQL can filter/index on them
+        # directly) and keep the whole nested object as JSONB below, for anything that
+        # doesn't need its own column.
         row = {
             "item_id": it["item_id"],
             "source_type": it["source_type"],
@@ -103,12 +114,14 @@ def _feedback_rows():
 
 
 def _econ_rows():
+    """Read the order_economics parquet file and yield one cleaned dict per order row."""
     df = pd.read_parquet(config.ORDER_ECONOMICS_PARQUET)
     for rec in df.to_dict("records"):
         yield {k: _clean(v) for k, v in rec.items()}
 
 
 def _gold_rows():
+    """Read gold_candidates.jsonl and yield one dict per hand-label candidate row, with label columns left blank."""
     for r in utils.read_jsonl(config.PROCESSED_DIR / "gold_candidates.jsonl"):
         gu = str(r.get("gold_urgency") or "").strip()
         yield {
@@ -132,14 +145,17 @@ def _gold_rows():
 
 
 def _bulk(conn, table, rows) -> int:
+    """Insert an iterable of row dicts into a table in batches of _BATCH rows at a time, returning the total row count inserted."""
     n, batch = 0, []
     for row in rows:
         batch.append(row)
+        # Once we've collected a full batch, insert it as one statement (much faster than one
+        # insert per row) and reset the batch to start collecting the next one.
         if len(batch) >= _BATCH:
             conn.execute(insert(table), batch)
             n += len(batch)
             batch = []
-    if batch:
+    if batch:  # insert whatever's left over that didn't fill a full batch
         conn.execute(insert(table), batch)
         n += len(batch)
     return n
@@ -149,6 +165,7 @@ _CORPUS_TABLES = "order_economics, feedback, gold_candidates"
 
 
 def load(recreate: bool = True):
+    """Create any missing tables, optionally truncate the corpus tables, then bulk-load order_economics, feedback, and gold_candidates; returns (engine, row-count dict)."""
     engine = create_engine(config.settings.database_url)
     schema.metadata.create_all(engine)  # create any missing tables; never drops
     with engine.begin() as conn:
@@ -176,6 +193,7 @@ _CHECKS = [
 
 
 def main() -> int:
+    """Parse command-line arguments, load the corpus into Postgres, and print a verification report; returns the process exit code."""
     ap = argparse.ArgumentParser(prog="echo.db")
     ap.add_argument("--keep", action="store_true", help="append instead of drop + recreate")
     args = ap.parse_args()

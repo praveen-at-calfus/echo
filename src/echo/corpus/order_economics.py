@@ -22,6 +22,7 @@ _ORDER_VALUE_CHECKS = {"median": (95, 115), "p95": (400, 500), "max": (13000, 14
 
 
 def _items_agg() -> pd.DataFrame:
+    """Aggregate order_items to one row per order: total product value, total freight, item count, and the English category name of the dominant (highest-price) product."""
     items = csv_io.read_order_items()
     agg = items.groupby("order_id").agg(
         product_value=("price", "sum"),
@@ -46,6 +47,7 @@ def _items_agg() -> pd.DataFrame:
 
 
 def _payments_agg() -> pd.DataFrame:
+    """Aggregate order_payments to one row per order: total payment value, whether multiple payment types were used, and the dominant (highest-value) payment type and installment count."""
     pay = csv_io.read_order_payments()
     agg = pay.groupby("order_id").agg(
         payment_value_total=("payment_value", "sum"),
@@ -63,6 +65,7 @@ def _payments_agg() -> pd.DataFrame:
 
 
 def _reviews_agg() -> pd.DataFrame:
+    """Aggregate reviews to one row per order: the lowest review score (if an order has more than one review) and whether any review has actual text."""
     rev = csv_io.read_reviews()
     rev["has_text"] = rev["review_comment_message"].str.strip().ne("")
     return (
@@ -73,6 +76,7 @@ def _reviews_agg() -> pd.DataFrame:
 
 
 def build_order_economics() -> pd.DataFrame:
+    """Join orders, customers, items, payments, and reviews into one row per order with derived money/fulfillment fields, and return the resulting reference DataFrame."""
     orders = csv_io.read_orders()
     customers = csv_io.read_customers()
 
@@ -98,6 +102,8 @@ def build_order_economics() -> pd.DataFrame:
     df["lateness_days"] = (df["delivered_ts"] - df["estimated_ts"]).dt.days
     df["delivered_late"] = (df["lateness_days"] > 0).where(df["lateness_days"].notna()).astype("boolean")
 
+    # Classify each order into exactly one outcome bucket by checking these conditions in
+    # order (first match wins); anything that matches none of them falls back to "other".
     st, late = df["order_status"], df["lateness_days"]
     df["fulfillment_outcome"] = np.select(
         [
@@ -129,6 +135,7 @@ def build_order_economics() -> pd.DataFrame:
 
 
 def summarize(df: pd.DataFrame) -> dict:
+    """Compute summary statistics (order value percentiles, fulfillment/payment breakdowns, null rates) over the order-economics DataFrame, and return them as a dict."""
     ov = df["order_value"].dropna()
     return {
         "rows": int(len(df)),
@@ -151,6 +158,7 @@ def summarize(df: pd.DataFrame) -> dict:
 
 
 def _self_check(stats: dict) -> None:
+    """Raise a ValueError if any order_value statistic falls outside its expected range, signalling that a join with the raw CSVs likely broke."""
     ov = stats["order_value"]
     for key, (lo, hi) in _ORDER_VALUE_CHECKS.items():
         if not (lo <= ov[key] <= hi):
@@ -160,6 +168,7 @@ def _self_check(stats: dict) -> None:
 
 
 def build(force: bool = False) -> pd.DataFrame:
+    """Return the cached order-economics parquet if it already exists (unless force is set), otherwise rebuild it from the raw CSVs, validate it, and write it to disk before returning it."""
     config.PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     if config.ORDER_ECONOMICS_PARQUET.exists() and not force:
         return pd.read_parquet(config.ORDER_ECONOMICS_PARQUET)

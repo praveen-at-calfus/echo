@@ -19,51 +19,130 @@ BASE_URL = os.environ.get("ECHO_API_URL", "http://localhost:8000")
 _TIMEOUT = 30.0
 
 
-def _get(path: str, **params) -> dict:
-    params = {k: v for k, v in params.items() if v is not None}
-    r = httpx.get(f"{BASE_URL}{path}", params=params, timeout=_TIMEOUT)
+class ApiError(Exception):
+    """A friendly, already-explained API failure to show the user directly."""
+
+
+def _headers() -> dict:
+    """Attach the logged-in user's bearer token (if any) to every request."""
+    user = st.session_state.get("auth_user")
+    if user and user.get("token"):
+        return {"Authorization": f"Bearer {user['token']}"}
+    return {}
+
+
+def _raise_for_auth(r: httpx.Response) -> None:
+    """Map auth failures to a clear message; expire the session on a 401."""
+    if r.status_code == 401:
+        st.session_state.pop("auth_user", None)  # force a fresh login
+        raise ApiError("Your session has expired. Please log in again.")
+    if r.status_code == 403:
+        raise ApiError("Your account isn't allowed to view this resource.")
     r.raise_for_status()
+
+
+def _get(path: str, **params) -> dict:
+    """Send a GET request to the API with the given query params and return the parsed JSON body."""
+    # Drop any param that's None so it's left out of the URL entirely, instead
+    # of being sent as the literal text "None".
+    params = {k: v for k, v in params.items() if v is not None}
+    r = httpx.get(f"{BASE_URL}{path}", params=params, headers=_headers(), timeout=_TIMEOUT)
+    _raise_for_auth(r)
     return r.json()
 
 
 def _post(path: str, payload: dict) -> dict:
-    r = httpx.post(f"{BASE_URL}{path}", json=payload, timeout=_TIMEOUT)
+    """Send a POST request with a JSON body to the API and return the parsed JSON response."""
+    r = httpx.post(f"{BASE_URL}{path}", json=payload, headers=_headers(), timeout=_TIMEOUT)
+    _raise_for_auth(r)
+    return r.json()
+
+
+# --------------------------------------------------------------------------- #
+# Auth — login/register/whoami. Not cached (each returns a per-user token).
+# --------------------------------------------------------------------------- #
+def login(email: str, password: str) -> dict:
+    """OAuth2 password form (username = email). Returns {access_token, role}."""
+    r = httpx.post(f"{BASE_URL}/auth/login",
+                   data={"username": email, "password": password}, timeout=_TIMEOUT)
+    if r.status_code == 401:
+        raise ApiError("Incorrect email or password.")
     r.raise_for_status()
     return r.json()
 
 
+def _validation_message(r: httpx.Response) -> str:
+    """Turn a FastAPI/Pydantic 422 error body into one readable sentence."""
+    try:
+        detail = r.json().get("detail", [])
+        msgs = [(d.get("msg", "") if isinstance(d, dict) else str(d)).removeprefix("Value error, ")
+                for d in detail]
+        if msgs:
+            return " ".join(msgs)
+    except Exception:  # noqa: BLE001
+        pass
+    return "Enter a valid email and a stronger password."
+
+
+def register(email: str, password: str, full_name: str | None = None) -> dict:
+    """Self-register a feedback-giver (GEN-POP) account. Returns the created user
+    (id, email, role, full_name) - no token. Sign-up no longer logs the user in
+    automatically; they are sent back to the login form instead."""
+    r = httpx.post(f"{BASE_URL}/auth/register",
+                   json={"email": email, "password": password, "full_name": full_name},
+                   timeout=_TIMEOUT)
+    if r.status_code == 409:
+        raise ApiError("That email is already registered. Try logging in instead.")
+    if r.status_code == 422:
+        raise ApiError(_validation_message(r))
+    r.raise_for_status()
+    return r.json()
+
+
+def me() -> dict:
+    """Fetch the currently logged-in user's profile from the API."""
+    return _get("/auth/me")
+
+
 @st.cache_data(ttl=60)
 def health() -> dict:
+    """Check whether the backend, database, and LLM features are up. Returns the health status dict."""
     return _get("/health")
 
 
 @st.cache_data(ttl=60)
 def overview() -> dict:
+    """Fetch the headline overview stats (item counts, negative share, money at stake). Returns the stats dict."""
     return _get("/stats/overview")
 
 
 @st.cache_data(ttl=60)
 def volume(by: str = "category") -> dict:
+    """Fetch feedback volume grouped by the given dimension (e.g. category or source). Returns the grouped counts."""
     return _get("/stats/volume", by=by)
 
 
 @st.cache_data(ttl=60)
 def sentiment(by: str = "split") -> dict:
+    """Fetch sentiment stats, either as an overall split or a week-by-week trend. Returns the sentiment data."""
     return _get("/stats/sentiment", by=by)
 
 
 @st.cache_data(ttl=60)
 def crosstab() -> dict:
+    """Fetch the category-by-source cross-tabulation counts. Returns the crosstab data."""
     return _get("/stats/crosstab")
 
 
 @st.cache_data(ttl=60)
 def themes(week: str | None = None, limit: int = 10) -> dict:
+    """Fetch the top ranked themes for a given week (or the latest week if none given). Returns the themes list."""
     return _get("/themes", week=week, limit=limit)
 
 
 @st.cache_data(ttl=60)
 def urgent(week: str | None = None, limit: int = 20) -> dict:
+    """Fetch the urgent-items queue for a given week (or all-time if none given). Returns the urgent items list."""
     return _get("/urgent", week=week, limit=limit)
 
 
@@ -74,7 +153,14 @@ def generate_weekly_summary(week: str) -> dict:
 
 @st.cache_data(ttl=60)
 def eval_gold() -> dict:
+    """Fetch the model-evaluation report card (gold-set accuracy + silver-sentiment accuracy). Returns the report."""
     return _get("/eval/gold")
+
+
+@st.cache_data(ttl=60)
+def users_analytics() -> dict:
+    """Company-only: per-user submission behavior (User Analytics page)."""
+    return _get("/users/analytics")
 
 
 def submit_feedback(text: str, source_type: str = "ticket",
@@ -85,6 +171,13 @@ def submit_feedback(text: str, source_type: str = "ticket",
     return _post("/feedback", {
         "text": text, "source_type": source_type, "source_score": source_score, "source_scale": source_scale,
         "order_value": order_value, "refund_amount": refund_amount, "fulfillment_outcome": fulfillment_outcome})
+
+
+def list_feedback(limit: int = 50, offset: int = 0, **filters) -> dict:
+    """GET /feedback — deliberately UNCACHED: gen_pop users see only their own
+    rows, and st.cache_data is process-global across browser sessions, so caching
+    a per-user list would leak one user's submissions to another."""
+    return _get("/feedback", limit=limit, offset=offset, **filters)
 
 
 def ask(question: str, k: int | None = None) -> dict:

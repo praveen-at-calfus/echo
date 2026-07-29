@@ -27,15 +27,20 @@ _FLOOR = {
 
 
 def _allocate(mix: dict[str, float], n: int) -> dict[str, int]:
+    """Split n tickets across categories according to the target mix percentages, rounding fairly so the counts add up to exactly n."""
     raw = {c: mix[c] * n for c in mix}
     base = {c: int(v) for c, v in raw.items()}
     rem = n - sum(base.values())
+    # Simple truncation (int(v)) usually loses a few tickets to rounding down; hand the
+    # leftover ones to whichever categories had the largest fractional remainder, so the
+    # total still adds up to exactly n.
     for c, _ in sorted(raw.items(), key=lambda kv: kv[1] - int(kv[1]), reverse=True)[:rem]:
         base[c] += 1
     return base
 
 
 def _pools(e: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    """Build, for each ticket category, the subset of orders whose real facts (status, payments, reviews) would justify that category, to ground synthesis on."""
     canceled = e["order_status"].eq("canceled")
     delivered = e["order_status"].eq("delivered")
     return {
@@ -50,16 +55,19 @@ def _pools(e: pd.DataFrame) -> dict[str, pd.DataFrame]:
 
 
 def _timestamp(rng: np.random.Generator, row, never_arrived: bool):
+    """Pick a plausible created_at date for a ticket about this order, falling back to sensible defaults when real dates are missing, and clamp it to the valid date range."""
     purchase = row.purchase_ts
     if pd.isna(purchase):
         purchase = pd.Timestamp(config.DATE_MIN) + timedelta(days=int(rng.integers(0, 700)))
     if never_arrived and not pd.isna(row.estimated_ts):
+        # "Never arrived" complaints only make sense after the estimated delivery date has passed.
         created = row.estimated_ts + timedelta(days=int(rng.integers(1, 20)))
     else:
         end = row.delivered_ts if not pd.isna(row.delivered_ts) else row.estimated_ts
         end = end if not pd.isna(end) else purchase + timedelta(days=15)
         if end <= purchase:
             end = purchase + timedelta(days=5)
+        # Pick a random point somewhere between purchase and the end date (delivery/estimate).
         created = purchase + (end - purchase) * float(rng.random())
     lo, hi = pd.Timestamp(config.DATE_MIN), pd.Timestamp(config.DATE_MAX)
     created = min(max(created, lo), hi)
@@ -67,11 +75,13 @@ def _timestamp(rng: np.random.Generator, row, never_arrived: bool):
 
 
 def _jitter(dt, rng: np.random.Generator):
+    """Nudge a datetime forward by 0-2 random days (used to space out near-duplicate tickets) without exceeding the max allowed date."""
     out = dt + timedelta(days=int(rng.integers(0, 3)))
     return min(out, config.DATE_MAX)
 
 
 def _sample_rows(pool: pd.DataFrame, n: int, seed: int) -> pd.DataFrame:
+    """Randomly draw n rows from the grounding pool (reusing rows if the pool is smaller than n) and return them as a fresh DataFrame."""
     rng = np.random.default_rng(seed)
     if len(pool) == 0:
         raise ValueError("empty grounding pool")
@@ -81,6 +91,7 @@ def _sample_rows(pool: pd.DataFrame, n: int, seed: int) -> pd.DataFrame:
 
 
 def build_tickets(econ: pd.DataFrame, generator, guard, limit: int | None = None, build_id: str | None = None):
+    """Generate the full set of synthetic support tickets grounded on real orders, and return the list of items plus summary stats."""
     n = config.N_TICKETS if limit is None else limit
     alloc = _allocate(config.TICKET_CATEGORY_MIX, n)
     pools = _pools(econ)
@@ -103,6 +114,9 @@ def build_tickets(econ: pd.DataFrame, generator, guard, limit: int | None = None
             must_include: list[str] = []
             urgency_floor = False
             never_arrived = category == "Shipping & Delivery" and row.fulfillment_outcome == "shipped_not_delivered"
+            # For a fixed fraction of tickets in categories that support it, force in a phrase
+            # (e.g. "charged twice", "order never arrived") that guarantees the ticket reads as
+            # genuinely urgent, so the corpus has a reliable set of known high-urgency examples.
             if category in _FLOOR and rng.random() < config.TICKET_URGENCY_FLOOR_FRACTION:
                 phrase = _FLOOR[category][int(rng.integers(0, len(_FLOOR[category])))]
                 must_include.append(phrase)
@@ -208,6 +222,7 @@ def build_tickets(econ: pd.DataFrame, generator, guard, limit: int | None = None
 
 
 def _emit_unique(generator, guard, brief, seed):
+    """Generate text for this brief, retrying up to 3 times with different sub-seeds if the diversity guard flags an unintended duplicate, and return the text with its generation record."""
     for attempt in range(3):
         s = seed if attempt == 0 else utils.child_seed(seed, "retry", attempt)
         rec = generator.generate({**brief, "seed": s}, s)
@@ -218,8 +233,10 @@ def _emit_unique(generator, guard, brief, seed):
 
 
 def _f(v):
+    """Convert a value to a plain float, or return None if it is missing/NaN."""
     return None if v is None or pd.isna(v) else float(v)
 
 
 def _s(v):
+    """Convert a value to a plain string, or return None if it is missing/NaN."""
     return None if v is None or (isinstance(v, float) and pd.isna(v)) else str(v)

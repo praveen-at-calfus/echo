@@ -20,6 +20,7 @@ from echo import config
 
 
 def _vector_literal(vec: list[float]) -> str:
+    """Format a list of numbers as the text form Postgres's pgvector type expects, e.g. "[0.1,0.2,...]"."""
     return "[" + ",".join(f"{x:.8f}" for x in vec) + "]"
 
 

@@ -26,6 +26,7 @@ from echo.themes.prompts import ThemeLabel
 
 
 def _item_meta(engine, item_ids: list[str], model: str, pv: str) -> dict[str, dict]:
+    """Look up category, text, and order value for a list of item ids, scoped to one model/prompt version, and return them keyed by item_id."""
     a, f = schema.analysis, schema.feedback
     q = (select(f.c.item_id, a.c.category, f.c.text, f.c.order_value)
          .select_from(a.join(f, f.c.item_id == a.c.item_id))
@@ -50,6 +51,7 @@ def _quotes(members: list[dict], rep_id: str) -> list[str]:
 
 
 def run(week: str | None = None, threshold: float | None = None) -> dict:
+    """Cluster a week's feedback, rank clusters by money at risk, label the top ones with the LLM, save them, and return a summary dict."""
     week = week or config.DEMO_WEEK
     if config.settings.use_offline:
         raise SystemExit("themes labelling needs OPENAI_API_KEY (set it in .env).")
@@ -115,6 +117,8 @@ def run(week: str | None = None, threshold: float | None = None) -> dict:
                 "total_tokens": (cl["_llm"]["in_t"] + cl["_llm"]["out_t"]) or None,
                 "latency_ms": cl["_llm"]["latency_ms"] or None, "status": "ok", "error": None})
 
+    # rough dollar cost estimate from token counts, using OpenAI's per-million-token
+    # prices for input and output tokens (this is just for reporting, not billing)
     cost = tot_in / 1e6 * 0.15 + tot_out / 1e6 * 0.60
     _report(week, clusters, top, generic_n, cost)
     return {"week": week, "clusters": len(clusters), "themes": len(top),
@@ -123,6 +127,7 @@ def run(week: str | None = None, threshold: float | None = None) -> dict:
 
 
 def _report(week, clusters, top, generic_n, cost) -> None:
+    """Print a plain-text summary of the week's clusters and their labelled themes to the console."""
     print(f"\n=== Themes · week of {week} · {len(clusters)} clusters "
           f"(>= {config.MIN_CLUSTER_SIZE}) · labelled top {len(top)} ===\n")
     for i, cl in enumerate(top, 1):

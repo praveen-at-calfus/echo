@@ -25,10 +25,12 @@ _TS_COLS = {
 
 
 def _path(name: str):
+    """Build the full file path for a named raw CSV using the configured raw directory and filename map."""
     return config.RAW_DIR / config.RAW_FILES[name]
 
 
 def _read(name: str, usecols: list[str] | None = None) -> pd.DataFrame:
+    """Read one named raw CSV into a DataFrame, converting known timestamp columns from text to real dates."""
     df = pd.read_csv(
         _path(name),
         usecols=usecols,
@@ -44,16 +46,19 @@ def _read(name: str, usecols: list[str] | None = None) -> pd.DataFrame:
 
 
 def read_orders() -> pd.DataFrame:
+    """Read the orders CSV and return it as a DataFrame."""
     return _read("orders")
 
 
 def read_reviews() -> pd.DataFrame:
+    """Read the reviews CSV and return it as a DataFrame with review_score coerced to a nullable integer."""
     df = _read("reviews")
     df["review_score"] = pd.to_numeric(df["review_score"], errors="coerce").astype("Int64")
     return df
 
 
 def read_order_items() -> pd.DataFrame:
+    """Read the order_items CSV and return it as a DataFrame with price and freight_value coerced to numbers."""
     df = _read("order_items")
     df["price"] = pd.to_numeric(df["price"], errors="coerce")
     df["freight_value"] = pd.to_numeric(df["freight_value"], errors="coerce")
@@ -61,6 +66,7 @@ def read_order_items() -> pd.DataFrame:
 
 
 def read_order_payments() -> pd.DataFrame:
+    """Read the order_payments CSV and return it as a DataFrame with payment fields coerced to numbers."""
     df = _read("order_payments")
     df["payment_value"] = pd.to_numeric(df["payment_value"], errors="coerce")
     df["payment_installments"] = pd.to_numeric(
@@ -70,12 +76,15 @@ def read_order_payments() -> pd.DataFrame:
 
 
 def read_customers() -> pd.DataFrame:
+    """Read the customers CSV and return it as a DataFrame."""
     return _read("customers")
 
 
 def read_products() -> pd.DataFrame:
+    """Read only the product_id and product_category_name columns from the products CSV and return them as a DataFrame."""
     return _read("products", usecols=["product_id", "product_category_name"])
 
 
 def read_category_translation() -> pd.DataFrame:
+    """Read the category_translation CSV (Portuguese to English category names) and return it as a DataFrame."""
     return _read("category_translation")

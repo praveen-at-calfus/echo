@@ -47,11 +47,15 @@ def _live_llm():
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=20), reraise=True)
 def _invoke(structured_llm, question: str, snippets: list[dict]):
+    """Send the question and retrieved snippets to the LLM (retrying on transient failures) and return the parsed answer plus input/output token counts and latency in milliseconds."""
     t0 = time.perf_counter()
     out = structured_llm.invoke(build_messages(question, snippets))
     latency = int((time.perf_counter() - t0) * 1000)
     parsed = out.get("parsed")
     if parsed is None:
+        # The model's reply didn't fit the expected answer shape (RagAnswer);
+        # raising here lets the @retry decorator above try again instead of
+        # silently returning a broken result.
         raise ValueError(f"structured parse failed: {out.get('parsing_error')}")
     raw = out.get("raw")
     um = getattr(raw, "usage_metadata", None) or {}
@@ -89,6 +93,9 @@ def ask(question: str, k: int | None = None, engine=None) -> dict:
     vecs, embed_tokens = embed_texts([question])
     retrieved = retrieve.top_k(eng, vecs[0], k)
     if not retrieved:
+        # Nothing to ground an answer on (e.g. embeddings haven't been built yet),
+        # so bail out with a plain message instead of asking the LLM to answer
+        # from nothing, which would risk it making something up.
         return {"question": question, "answer": "No feedback has been embedded yet — nothing to search.",
                 "citations": [], "stats": None, "model": model, "prompt_version": pv}
 
@@ -100,6 +107,8 @@ def ask(question: str, k: int | None = None, engine=None) -> dict:
                   "snippet": by_id[cid]["text"][:200]} for cid in cited]
     stats = _stats_over_retrieved(eng, retrieved)
 
+    # Log this call to the llm_calls audit table (same pattern every LLM stage
+    # follows) so token usage, latency, and cost can be tracked over time.
     with eng.begin() as c:
         c.execute(insert(schema.llm_calls), {
             "item_id": None, "call_type": "rag", "model_name": model, "prompt_version": pv,

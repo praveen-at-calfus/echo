@@ -52,5 +52,6 @@ HARD RULES:
 
 
 def build_messages(facts: dict) -> list[tuple[str, str]]:
+    """Build the system/user chat messages asking the model to narrate the week's pre-computed facts."""
     payload = json.dumps(facts, ensure_ascii=False, indent=2, default=str)
     return [("system", SYSTEM), ("user", f"Weekly facts (all numbers final):\n{payload}")]

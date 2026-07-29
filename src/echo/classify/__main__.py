@@ -8,6 +8,7 @@ from echo.classify.runner import run
 
 
 def main() -> int:
+    """Parse command-line arguments and run the classify stage; returns the process exit code."""
     ap = argparse.ArgumentParser(prog="echo.classify")
     ap.add_argument("--limit", type=int, default=None, help="max texted items (dry-run)")
     ap.add_argument("--workers", type=int, default=None)

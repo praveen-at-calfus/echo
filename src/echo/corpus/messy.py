@@ -21,6 +21,8 @@ _NON_PT = ("en", "es", "pt-en-mix")
 
 @dataclass
 class MessyPlan:
+    """Holds the decisions about how "messy" one synthetic item should be (length, spam, language, etc.)."""
+
     too_long: bool = False
     spam: bool = False
     gibberish: bool = False
@@ -36,9 +38,12 @@ class MessyPlan:
 
 
 def plan_ticket(rng: np.random.Generator) -> MessyPlan:
+    """Roll the dice (using the given RNG) to decide which messy traits a synthetic ticket should have and return the resulting MessyPlan."""
     f = config.MESSY_FRACTIONS_TICKETS
     p = MessyPlan()
 
+    # Pick exactly one length bucket by walking through cumulative probability ranges:
+    # first check "very long", then the remaining chance for "long", else fall through to normal length.
     r = rng.random()
     if r < f["very_long"]:
         p.too_long, p.target_length = True, int(rng.integers(2000, 3500))
@@ -74,6 +79,7 @@ def plan_ticket(rng: np.random.Generator) -> MessyPlan:
 
 
 def plan_survey(rng: np.random.Generator) -> MessyPlan:
+    """Roll the dice (using the given RNG) to decide which messy traits a synthetic survey response should have and return the resulting MessyPlan."""
     f = config.MESSY_FRACTIONS_SURVEYS
     p = MessyPlan(target_length=int(rng.integers(20, 200)))
     if rng.random() < f["score_only"]:

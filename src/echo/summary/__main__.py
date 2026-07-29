@@ -9,6 +9,7 @@ from echo.summary import run
 
 
 def main() -> int:
+    """Parse command-line arguments and generate the weekly briefing for the chosen week."""
     ap = argparse.ArgumentParser(prog="echo.summary")
     ap.add_argument("--week", default=config.DEMO_WEEK, help=f"ISO week start (default DEMO_WEEK {config.DEMO_WEEK})")
     args = ap.parse_args()

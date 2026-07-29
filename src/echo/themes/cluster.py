@@ -51,6 +51,10 @@ def cluster_week(engine, week: str, model: str, pv: str,
         return []
     threshold = config.CLUSTER_DISTANCE_THRESHOLD if threshold is None else threshold
 
+    # group items by how similar their meaning-vectors are (cosine distance), instead
+    # of asking for a fixed number of groups upfront: any two items closer than
+    # "threshold" can end up in the same group, and groups keep merging until nothing
+    # left is close enough
     labels = AgglomerativeClustering(
         n_clusters=None, distance_threshold=threshold,
         metric="cosine", linkage="average",

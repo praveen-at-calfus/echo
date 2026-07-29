@@ -9,6 +9,7 @@ from echo.rag.answer import ask
 
 
 def main() -> int:
+    """Parse the question and --k option from the command line, run ask() against them, and print the answer, sources, and stats."""
     ap = argparse.ArgumentParser(prog="echo.rag")
     ap.add_argument("question", help="the question to ask echo")
     ap.add_argument("--k", type=int, default=config.RAG_TOP_K, help="how many feedback items to retrieve")

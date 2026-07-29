@@ -35,18 +35,24 @@ _PRICE_IN, _PRICE_OUT = 0.15, 0.60  # gpt-4o-mini USD per 1M tokens
 
 
 def _analysis_hash(text: str, prompt_version: str, model: str) -> str:
+    """Build a cache key from the normalized text plus prompt version and model, so identical texts reuse one result."""
     return hashlib.sha256(f"{normalize_text(text)}|{prompt_version}|{model}".encode()).hexdigest()
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=20), reraise=True)
 def _invoke(structured_llm, text: str):
+    """Send one text to the model and return (parsed classification, input tokens, output tokens, total tokens, latency ms, raw reply text), retrying up to 3 times on transient failures."""
     t0 = time.perf_counter()
     out = structured_llm.invoke(build_messages(text))
     latency = int((time.perf_counter() - t0) * 1000)
     parsed = out.get("parsed")
     if parsed is None:
+        # The model's reply didn't match our expected Classification shape; treat it as a
+        # failure so the retry decorator (or the caller) can handle it instead of silently
+        # passing along a broken result.
         raise ValueError(f"structured parse failed: {out.get('parsing_error')}")
     raw = out.get("raw")
+    # usage_metadata holds how many tokens the call cost, used later to estimate spend.
     um = getattr(raw, "usage_metadata", None) or {}
     return (parsed, int(um.get("input_tokens", 0)), int(um.get("output_tokens", 0)),
             int(um.get("total_tokens", 0)), latency, (getattr(raw, "content", "") or ""))
@@ -80,7 +86,11 @@ def classify_text(text: str, floor_signal: bool | None = None) -> tuple[dict, di
 
 
 def _score_only_sentiment(score, scale):
+    """Turn a numeric survey score into (sentiment, urgency) without calling the model, for items that have no free text."""
     if scale == "nps_0_10":
+        # NPS (Net Promoter Score) is a 0-10 "how likely to recommend us" question.
+        # Low scores are unhappy customers (moderate urgency), high scores are happy ones
+        # (low urgency); everything in between is treated as neutral, average urgency.
         if score is not None and score <= config.NPS_NEG_MAX:
             return "negative", 3
         if score is not None and score >= config.NPS_POS_MIN:
@@ -95,6 +105,9 @@ def run_score_only(engine, model: str, pv: str, limit: int | None = None) -> dic
     current (model, prompt_version); audited in ``llm_calls`` as ``score_derived``.
     """
     a, f = schema.analysis, schema.feedback
+    # Left-join feedback to analysis for this exact (model, prompt_version): a NULL on the
+    # analysis side means "not analysed yet for this version", which is how we find work
+    # to do without re-processing items we've already handled.
     j = f.outerjoin(a, and_(a.c.item_id == f.c.item_id,
                             a.c.model_name == model, a.c.prompt_version == pv))
     q = (select(f.c.item_id, f.c.source_score, f.c.source_scale)
@@ -124,6 +137,8 @@ def run_score_only(engine, model: str, pv: str, limit: int | None = None) -> dic
                          "output": None, "status": "ok", "error": None})
 
     with engine.begin() as c:
+        # ON CONFLICT DO NOTHING makes this insert safe to re-run: if a row for this
+        # (item, model, prompt_version) already exists, the duplicate insert is just skipped.
         stmt = pg_insert(a).on_conflict_do_nothing(constraint="uq_analysis_item_version")
         c.execute(stmt, analysis_rows)
         c.execute(insert(schema.llm_calls), llm_rows)
@@ -132,6 +147,7 @@ def run_score_only(engine, model: str, pv: str, limit: int | None = None) -> dic
 
 
 def run(limit: int | None = None, workers: int | None = None) -> dict:
+    """Run the full classify stage end to end (score-only surveys, then LLM classification of texted items, then writing results and printing a summary); returns a dict of run stats."""
     workers = workers or config.CLASSIFY_WORKERS
     model = config.settings.model
     pv = config.CLASSIFY_PROMPT_VERSION
@@ -165,6 +181,8 @@ def run(limit: int | None = None, workers: int | None = None) -> dict:
     hashes = list({it["hash"] for it in items})
     cached: dict[str, tuple] = {}
     with engine.connect() as c:
+        # DISTINCT ON the hash: several older rows could share the same hash (e.g. from a
+        # prior run), so this keeps exactly one representative result per unique text.
         qc = (select(a.c.analysis_hash, a.c.category, a.c.sentiment, a.c.urgency, a.c.rationale)
               .where(a.c.analysis_hash.in_(hashes)).distinct(a.c.analysis_hash).order_by(a.c.analysis_hash))
         for r in c.execute(qc):
@@ -238,7 +256,7 @@ def run(limit: int | None = None, workers: int | None = None) -> dict:
         if len(samples) < 8:
             samples.append((it["text"][:70], cat, sent, urg, floored))
 
-    # 5) write
+    # 5) write (in batches of 2000 rows so one giant insert doesn't overload the connection)
     with engine.begin() as c:
         stmt = pg_insert(a).on_conflict_do_nothing(constraint="uq_analysis_item_version")
         for i in range(0, len(analysis_rows), 2000):

@@ -15,12 +15,14 @@ from echo.themes import run
 
 
 def _weeks(anchor: str, trend: int) -> list[str]:
+    """Build a sorted list of ISO week-start dates: the anchor week plus the given number of preceding weeks."""
     start = datetime.strptime(anchor, "%Y-%m-%d")
     weeks = [(start - timedelta(days=7 * i)).strftime("%Y-%m-%d") for i in range(trend + 1)]
     return sorted(weeks)
 
 
 def main() -> int:
+    """Parse command-line arguments and run the themes pipeline for one or more weeks, printing a combined total."""
     ap = argparse.ArgumentParser(prog="echo.themes")
     ap.add_argument("--week", default=None, help="a single ISO week start (overrides --trend)")
     ap.add_argument("--trend", type=int, default=4, help="preceding weeks to include (default 4)")

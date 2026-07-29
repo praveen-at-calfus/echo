@@ -55,6 +55,7 @@ _VARIANTS = (
 
 
 def _fmt(tpl: str, facts: dict) -> str:
+    """Fill in a Portuguese ticket template with the order's grounding facts, substituting sensible placeholder text for any missing fact."""
     return tpl.format(
         ref=facts.get("order_ref", "XXXXXXXX"),
         cat=facts.get("product_category_en") or "produto",
@@ -70,6 +71,7 @@ def _fmt(tpl: str, facts: dict) -> str:
 
 
 def _gibberish(rng: random.Random) -> str:
+    """Generate a string of random lowercase letter "words" that reads as keyboard-mashed nonsense."""
     return " ".join(
         "".join(rng.choice(string.ascii_lowercase) for _ in range(rng.randint(2, 9)))
         for _ in range(rng.randint(4, 12))
@@ -77,6 +79,7 @@ def _gibberish(rng: random.Random) -> str:
 
 
 def _spam(rng: random.Random) -> str:
+    """Pick one random promotional spam message unrelated to customer support."""
     promos = [
         "PROMOÇÃO IMPERDÍVEL!!! Ganhe R$100 clicando no link agora!!!",
         "Compre seguidores e curtidas baratinho, chama no whats!!!",
@@ -86,6 +89,7 @@ def _spam(rng: random.Random) -> str:
 
 
 def render_stub(brief: dict, seed: int) -> str:
+    """Render deterministic, seeded Portuguese template text for the given brief (ticket or survey), applying any messy traits (gibberish, spam, sarcasm, off-topic, language switch, length padding) it calls for."""
     rng = random.Random(seed)
     content = brief.get("content", {})
     facts = brief["facts"]

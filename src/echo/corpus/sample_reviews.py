@@ -21,6 +21,7 @@ _N_TOP_CATEGORIES = 12
 
 
 def _length_band(n: int) -> str:
+    """Classify a text length (character count) into "short", "med", or "long" using the configured length thresholds."""
     lo, hi = config.TEXT_LENGTH_BANDS
     return "short" if n < lo else ("med" if n <= hi else "long")
 
@@ -57,6 +58,8 @@ def _build_population(econ: pd.DataFrame) -> pd.DataFrame:
 
 def _target_counts(pop: pd.DataFrame, cell_ids: np.ndarray, n_cells: int, n_sample: int) -> np.ndarray:
     """Expected per-cell counts in a perfect n_sample-sized draw from the target."""
+    # Relies on the module-level _cell_labels list (set by build_reviews before this is
+    # called) to map each cell id back to its score/category/length label.
     pop_counts = np.bincount(cell_ids, minlength=n_cells).astype(float)
     if config.MCMC_TARGET == "balanced":
         # Flatten across score bands while keeping category/length structure:
@@ -79,19 +82,26 @@ _cell_labels: list[str] = []  # populated in build_reviews for _target_counts
 
 
 def _mcmc_select(cell_ids: np.ndarray, target: np.ndarray, n_sample: int, seed: int):
+    """Use simulated annealing to swap items between a random starting sample and the leftover pool until the sample's per-cell counts closely match the target distribution, returning the selected indices, final counts, and remaining error (energy)."""
     rng = np.random.default_rng(seed)
     n_pop = cell_ids.size
     n_cells = target.size
 
+    # Start from a plain random sample, split into "in" (selected) and "out" (leftover) pools.
     order = rng.permutation(n_pop)
     in_arr = order[:n_sample].copy()
     out_arr = order[n_sample:].copy()
 
     counts = np.bincount(cell_ids[in_arr], minlength=n_cells).astype(float)
+    # "Energy" = total squared distance between the current sample's per-cell counts and
+    # the target counts; lower is better, zero would mean a perfect match.
     energy = float(np.sum((counts - target) ** 2))
 
     iters = config.MCMC_ITERS
     t0, tmin = config.MCMC_T0, config.MCMC_T_MIN
+    # Cool the "temperature" geometrically from t0 down to tmin over all iterations, so
+    # early swaps are more willing to accept a worse trade and later ones only accept
+    # improvements (this is what lets the search escape bad local optima early on).
     anneal = (tmin / t0) ** (1.0 / iters)
     temp = t0
 
@@ -101,10 +111,14 @@ def _mcmc_select(cell_ids: np.ndarray, target: np.ndarray, n_sample: int, seed: 
         i, j = int(in_arr[pi]), int(out_arr[pj])
         ca, cb = cell_ids[i], cell_ids[j]
         if ca != cb:
+            # Compute how much the total error would change if we swapped item i (in the
+            # sample) for item j (in the leftover pool).
             d = (
                 (counts[ca] - 1 - target[ca]) ** 2 - (counts[ca] - target[ca]) ** 2
                 + (counts[cb] + 1 - target[cb]) ** 2 - (counts[cb] - target[cb]) ** 2
             )
+            # Always accept a swap that improves (or doesn't worsen) the fit; occasionally
+            # accept a worse swap too, with a probability that shrinks as temp cools.
             if d <= 0 or uacc[k] < np.exp(-d / temp):
                 counts[ca] -= 1
                 counts[cb] += 1
@@ -192,13 +206,16 @@ def build_reviews(econ: pd.DataFrame, limit: int | None = None, build_id: str | 
 
 
 def _prop(s: pd.Series) -> dict:
+    """Compute the proportion of each distinct value in a series and return it as a dict of value -> rounded fraction."""
     vc = s.value_counts(normalize=True).sort_index()
     return {int(k): round(float(v), 4) for k, v in vc.items()}
 
 
 def _f(v):
+    """Convert a value to a plain float, or return None if it is missing/NaN."""
     return None if v is None or (isinstance(v, float) and pd.isna(v)) or pd.isna(v) else float(v)
 
 
 def _s(v):
+    """Convert a value to a plain string, or return None if it is missing/NaN."""
     return None if v is None or (isinstance(v, float) and pd.isna(v)) else str(v)

@@ -120,6 +120,7 @@ class CorpusItem(BaseModel):
 
     @model_validator(mode="after")
     def _check_invariants(self) -> CorpusItem:
+        """Check the item follows the rules every feedback item must obey, raising a clear error if any rule is broken."""
         # Source distinction: tickets have no score; review/survey always do.
         if self.source_type == "ticket":
             if self.source_score is not None or self.source_scale is not None:

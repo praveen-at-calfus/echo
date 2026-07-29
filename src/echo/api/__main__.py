@@ -6,6 +6,7 @@ import argparse
 
 
 def main() -> int:
+    """Parse the --host/--port/--reload command-line options and start the API server with uvicorn."""
     ap = argparse.ArgumentParser(prog="echo.api")
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=8000)

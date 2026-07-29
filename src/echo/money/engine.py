@@ -33,10 +33,12 @@ _COMPONENTS = ("refund_pending", "disputed_charge", "lost_order_value", "return_
 
 
 def _engine(engine=None):
+    """Return the given database engine if provided, otherwise create a new one from the configured database URL."""
     return engine or create_engine(config.settings.database_url)
 
 
 def _version(model: str | None, pv: str | None) -> tuple[str, str]:
+    """Fill in the default model name and classify prompt version for any that weren't given, and return both."""
     return (model or config.settings.model, pv or config.CLASSIFY_PROMPT_VERSION)
 
 
@@ -131,6 +133,9 @@ def retention_by_category(engine=None, week: str | None = None,
     bounds = week_bounds(week)
     wk = "AND f.created_at >= :wk_start AND f.created_at < :wk_end" if bounds else ""
 
+    # a customer might show up more than once (several complaints); we only want to
+    # count them once, so DISTINCT ON keeps just their single worst (highest urgency,
+    # then highest order value) row per customer
     sql = text(f"""
         WITH worst AS (
           SELECT DISTINCT ON (f.customer_unique_id)
@@ -218,6 +223,9 @@ def exposure_for_items(item_ids: list[str], engine=None,
     exposure = " + ".join(f"({sql})" for sql in comp.values())
     prop = mechanics.propensity_sql("category")  # read from the `base` CTE's output column
 
+    # the "worst" CTE below does the same one-row-per-customer dedup as
+    # retention_by_category: count each at-risk customer only once, on their
+    # single worst item, so someone who complained twice isn't double-counted
     sql = text(f"""
         WITH base AS (
           SELECT a.category, a.sentiment, a.urgency, f.order_value, f.customer_unique_id,

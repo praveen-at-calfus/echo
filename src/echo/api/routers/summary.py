@@ -26,6 +26,7 @@ _ROW_SQL = """
 
 
 def _fetch(eng, week: str) -> dict | None:
+    """Look up the previously generated weekly summary row for the given week, or return None if none exists yet."""
     with eng.connect() as c:
         r = c.execute(text(_ROW_SQL), {"week": week}).mappings().first()
     return dict(r) if r else None
@@ -33,6 +34,7 @@ def _fetch(eng, week: str) -> dict | None:
 
 @router.get("/weekly")
 def weekly(week: str | None = Query(None, description="ISO week start; default = latest available")) -> dict:
+    """GET /summary/weekly: read back a previously generated weekly summary, defaulting to the most recent week that has one, without calling the LLM again."""
     eng = deps.get_engine()
     if week is None:
         with eng.connect() as c:
@@ -47,6 +49,7 @@ def weekly(week: str | None = Query(None, description="ISO week start; default =
 
 @router.post("/weekly")
 def generate_weekly(body: WeeklySummaryIn) -> dict:
+    """POST /summary/weekly: generate a new weekly summary live (SQL computes the numbers, the LLM only writes the narrative), store it, and return the resulting row."""
     if not deps.llm_available():
         raise HTTPException(503, "generating a weekly summary needs an OpenAI key (set OPENAI_API_KEY)")
     from echo.summary.runner import run as run_summary
@@ -55,6 +58,9 @@ def generate_weekly(body: WeeklySummaryIn) -> dict:
     try:
         run_summary(week=body.week, engine=eng)
     except SystemExit as e:
+        # run_summary raises SystemExit for user-facing problems (e.g. a week
+        # with no data to summarize); convert that into a proper HTTP error
+        # instead of letting it crash the server process.
         raise HTTPException(422, str(e)) from e
     row = _fetch(eng, body.week)
     if row is None:

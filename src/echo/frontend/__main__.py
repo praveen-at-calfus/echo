@@ -14,6 +14,7 @@ from pathlib import Path
 
 
 def main() -> int:
+    """Launch the Streamlit app as a subprocess and return its exit code."""
     app_path = Path(__file__).parent / "app.py"
     return subprocess.call([sys.executable, "-m", "streamlit", "run", str(app_path)])
 
