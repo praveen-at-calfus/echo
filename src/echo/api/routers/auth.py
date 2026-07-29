@@ -23,9 +23,10 @@ from echo.auth import security, service
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=TokenOut, status_code=201)
-def register(body: RegisterIn) -> TokenOut:
-    """Self-register a GEN-POP account and return a token (logged in immediately)."""
+@router.post("/register", response_model=UserOut, status_code=201)
+def register(body: RegisterIn) -> UserOut:
+    """Self-register a GEN-POP account. Returns the created account, not a token -
+    registration no longer logs the user in; they log in separately afterward."""
     try:
         user = service.create_user(
             deps.get_engine(),
@@ -36,8 +37,8 @@ def register(body: RegisterIn) -> TokenOut:
         )
     except service.EmailExistsError:
         raise HTTPException(status.HTTP_409_CONFLICT, "email already registered") from None
-    token = security.create_access_token(user["id"], user["role"])
-    return TokenOut(access_token=token, role=user["role"])
+    return UserOut(id=user["id"], email=user["email"], role=user["role"],
+                   full_name=user.get("full_name"))
 
 
 @router.post("/login", response_model=TokenOut)

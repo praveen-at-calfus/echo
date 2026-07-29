@@ -67,15 +67,30 @@ def login(email: str, password: str) -> dict:
     return r.json()
 
 
+def _validation_message(r: httpx.Response) -> str:
+    """Turn a FastAPI/Pydantic 422 error body into one readable sentence."""
+    try:
+        detail = r.json().get("detail", [])
+        msgs = [(d.get("msg", "") if isinstance(d, dict) else str(d)).removeprefix("Value error, ")
+                for d in detail]
+        if msgs:
+            return " ".join(msgs)
+    except Exception:  # noqa: BLE001
+        pass
+    return "Enter a valid email and a stronger password."
+
+
 def register(email: str, password: str, full_name: str | None = None) -> dict:
-    """Self-register a feedback-giver (GEN-POP) account. Returns {access_token, role}."""
+    """Self-register a feedback-giver (GEN-POP) account. Returns the created user
+    (id, email, role, full_name) - no token. Sign-up no longer logs the user in
+    automatically; they are sent back to the login form instead."""
     r = httpx.post(f"{BASE_URL}/auth/register",
                    json={"email": email, "password": password, "full_name": full_name},
                    timeout=_TIMEOUT)
     if r.status_code == 409:
         raise ApiError("That email is already registered. Try logging in instead.")
     if r.status_code == 422:
-        raise ApiError("Enter a valid email and a password of at least 6 characters.")
+        raise ApiError(_validation_message(r))
     r.raise_for_status()
     return r.json()
 
@@ -127,6 +142,12 @@ def generate_weekly_summary(week: str) -> dict:
 @st.cache_data(ttl=60)
 def eval_gold() -> dict:
     return _get("/eval/gold")
+
+
+@st.cache_data(ttl=60)
+def users_analytics() -> dict:
+    """Company-only: per-user submission behavior (User Analytics page)."""
+    return _get("/users/analytics")
 
 
 def submit_feedback(text: str, source_type: str = "ticket",

@@ -11,11 +11,34 @@ here on purpose - that's a house style rule for the UI.
 
 from __future__ import annotations
 
+import re
+
 import api_client
 import streamlit as st
 
 COMPANY = "company"
 GEN_POP = "gen_pop"
+
+# Mirrors the server-side policy in echo.api.schemas.RegisterIn (kept in sync by
+# hand - this is only a fast client-side check; the backend is authoritative).
+PASSWORD_MIN_LENGTH = 8
+PASSWORD_HINT = ("At least 8 characters, with an uppercase letter, a lowercase letter, "
+                  "a number, and a special character.")
+
+
+def _password_issues(password: str) -> list[str]:
+    missing = []
+    if len(password) < PASSWORD_MIN_LENGTH:
+        missing.append(f"at least {PASSWORD_MIN_LENGTH} characters")
+    if not re.search(r"[A-Z]", password):
+        missing.append("an uppercase letter")
+    if not re.search(r"[a-z]", password):
+        missing.append("a lowercase letter")
+    if not re.search(r"\d", password):
+        missing.append("a number")
+    if not re.search(r"[^A-Za-z0-9]", password):
+        missing.append("a special character")
+    return missing
 
 
 # --------------------------------------------------------------------------- #
@@ -83,7 +106,8 @@ _LANDING_CSS = """
 
 /* Dark-friendly inputs/buttons for the sign-in card. */
 .stApp [data-testid="stTextInput"] label,
-.stApp [data-testid="stTabs"] button p { color: #d7deea !important; }
+.stApp [data-testid="stRadio"] label p,
+.stApp [data-testid="stCaptionContainer"] { color: #d7deea !important; }
 .stApp .stButton > button {
     background: rgba(255,255,255,0.08); color: #f5f7fb;
     border: 1px solid rgba(255,255,255,0.25); border-radius: 10px;
@@ -145,36 +169,59 @@ def render_landing() -> None:
 
 
 def _render_auth_form() -> None:
-    tab_login, tab_register = st.tabs(["Log in", "Sign up"])
+    # A mode toggle (not st.tabs) because a successful sign-up needs to switch
+    # the view back to "Log in" programmatically, which tabs cannot do. The
+    # switch is deferred to a flag checked here, BEFORE the radio widget below
+    # is instantiated - Streamlit forbids writing to a widget's session_state
+    # key after that widget has already been created in the same run.
+    if st.session_state.pop("_force_login_mode", False):
+        st.session_state["auth_mode"] = "Log in"
 
-    with tab_login, st.form("login_form"):
-        email = st.text_input("Email")
-        password = st.text_input("Password", type="password")
-        if st.form_submit_button("Log in", use_container_width=True, type="primary"):
-            try:
-                resp = api_client.login(email.strip(), password)
-            except api_client.ApiError as e:
-                st.error(str(e))
-            except Exception as e:  # noqa: BLE001
-                st.error(f"Could not reach the echo API at {api_client.BASE_URL}: {e}")
-            else:
-                _store_and_rerun(resp, email.strip())
+    mode = st.radio("Mode", ["Log in", "Sign up"], horizontal=True,
+                    label_visibility="collapsed", key="auth_mode")
 
-    with tab_register:
-        st.caption("Public sign-up creates a feedback account. Company accounts are provisioned by staff.")
-        with st.form("register_form"):
-            email = st.text_input("Email", key="reg_email")
-            password = st.text_input("Password (min 6 characters)", type="password", key="reg_pw")
-            full_name = st.text_input("Name (optional)", key="reg_name")
-            if st.form_submit_button("Create account", use_container_width=True, type="primary"):
+    if mode == "Log in":
+        if st.session_state.pop("signup_success", False):
+            st.success("Account created. Please log in.")
+        with st.form("login_form"):
+            email = st.text_input("Email")
+            password = st.text_input("Password", type="password")
+            if st.form_submit_button("Log in", use_container_width=True, type="primary"):
                 try:
-                    resp = api_client.register(email.strip(), password, full_name.strip() or None)
+                    resp = api_client.login(email.strip(), password)
                 except api_client.ApiError as e:
                     st.error(str(e))
                 except Exception as e:  # noqa: BLE001
                     st.error(f"Could not reach the echo API at {api_client.BASE_URL}: {e}")
                 else:
                     _store_and_rerun(resp, email.strip())
+        return
+
+    # mode == "Sign up"
+    st.caption("Public sign-up creates a feedback account. Company accounts are provisioned by staff.")
+    with st.form("register_form"):
+        email = st.text_input("Email", key="reg_email")
+        password = st.text_input("Password", type="password", key="reg_pw")
+        confirm = st.text_input("Confirm password", type="password", key="reg_pw_confirm")
+        st.caption(PASSWORD_HINT)
+        full_name = st.text_input("Name (optional)", key="reg_name")
+        if st.form_submit_button("Create account", use_container_width=True, type="primary"):
+            issues = _password_issues(password)
+            if password != confirm:
+                st.error("Passwords do not match.")
+            elif issues:
+                st.error("Password must contain " + ", ".join(issues) + ".")
+            else:
+                try:
+                    api_client.register(email.strip(), password, full_name.strip() or None)
+                except api_client.ApiError as e:
+                    st.error(str(e))
+                except Exception as e:  # noqa: BLE001
+                    st.error(f"Could not reach the echo API at {api_client.BASE_URL}: {e}")
+                else:
+                    st.session_state["_force_login_mode"] = True
+                    st.session_state["signup_success"] = True
+                    st.rerun()
 
 
 # --------------------------------------------------------------------------- #

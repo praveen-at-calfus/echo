@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from echo.api import deps
-from echo.api.routers import ask, auth, feedback, health, stats, summary, themes, urgent
+from echo.api.routers import ask, auth, feedback, health, stats, summary, themes, urgent, users
 from echo.api.routers import eval as eval_router
 from echo.db import schema, vector
 
@@ -65,7 +65,7 @@ app.include_router(auth.router)
 # a GEN-POP token gets a 403 here even when driving these from Swagger UI — the
 # security boundary is server-side, not UI-hidden. Zero edits to these routers.
 for r in (stats.router, themes.router, urgent.router, summary.router,
-          ask.router, eval_router.router):
+          ask.router, eval_router.router, users.router):
     app.include_router(r, dependencies=[Depends(deps.require_company)])
 
 # Mixed access — guards live per-endpoint inside the router (POST: any logged-in

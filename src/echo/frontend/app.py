@@ -43,6 +43,7 @@ page = st.navigation([
     st.Page("views/weekly_summary.py", title="Weekly Summary"),
     st.Page("views/ask_echo.py", title="Ask echo"),
     st.Page("views/model_evaluation.py", title="Model Evaluation"),
+    st.Page("views/user_analytics.py", title="User Analytics"),
 ])
 common.render_account_and_health()
 page.run()

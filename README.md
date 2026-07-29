@@ -263,20 +263,24 @@ Target: readable aloud in under 90 seconds, every number traceable to SQL. Examp
 | `GET/POST /summary/weekly` | Read / generate the weekly summary | COMPANY |
 | `POST /ask` | RAG Q&A (bonus) | COMPANY |
 | `GET /eval/gold` | Model-evaluation report card | COMPANY |
+| `GET /users/analytics` | Per-user submission behavior (User Analytics page) | COMPANY |
 
 ### Authentication & roles
 
 echo has two kinds of user, stored in one `users` table:
 
 - **GEN-POP** — end users who *feed a feedback*. Can submit (`POST /feedback`) and view **only the feedback they submitted**. Public sign-up (`POST /auth/register`) always creates this role.
-- **COMPANY** — staff/admins who *see all feedback and analytics*. Full read access to every analytics endpoint. Company accounts are **not** self-registerable; they are provisioned by staff via `python -m echo.auth create-user ... --role company` (or the `seed` command).
+- **COMPANY** — staff/admins who *see all feedback and analytics*. Full read access to every analytics endpoint, including **User Analytics** (below). Company accounts are **not** self-registerable; they are provisioned by staff via `python -m echo.auth create-user ... --role company` (or the `seed` command).
 
 Mechanics: passwords are bcrypt-hashed; tokens are signed HS256 (PyJWT) with `JWT_SECRET`. The login route uses the OAuth2 password flow, so Swagger UI shows an **Authorize** button. The security boundary is server-side — the frontend only decides what to *show*, never what's *allowed*. `feedback.submitter_id` (a FK to `users.id`, NULL for the batch corpus) powers GEN-POP "view own".
+
+**Sign-up:** `POST /auth/register` enforces a password policy (at least 8 characters, an uppercase letter, a lowercase letter, a number, and a special character — checked with a Pydantic validator on `RegisterIn`, so a bad password gets one clear `422` message naming everything missing) and **returns the created account, not a token** — registering no longer logs the user in. The frontend's sign-up form adds a client-side Confirm-password field (mismatch is caught before the request is even sent) and, on success, switches back to the login form with a one-time "Account created" banner. This policy only applies to public self-registration; `python -m echo.auth create-user`/`seed` are unaffected, so staff and demo accounts can use any password.
 
 **Streamlit** dashboard — a **thin client** that talks only to the API (never to the DB or LLM directly), organized as a single router entrypoint (`app.py` + `st.navigation`) with the content pages under `views/`:
 - **Landing / login screen** for signed-out visitors (no sidebar): the `echo` wordmark with animated side arc-waves, and a Login button that reveals login / create-account.
 - **GEN-POP** sees a single **Feed a feedback** page with a top-right logout and no status chrome. The rating field adapts to the feedback type (Review shows a 1&ndash;5 star rating, Survey a 0&ndash;10 recommend score, Support ticket carries none), and all dropdowns use plain-language labels. On submit the customer sees only a thank-you confirmation (never the internal classification, sentiment, urgency, or money figures &mdash; those still run server-side for the company view), plus a **Submit another feedback** button that resets the form. Below the form is a read-only list of the customer's own past submissions (their text + date).
-- **COMPANY** sees the analytics pages in the sidebar — Overview, Urgent Queue, Themes, Weekly Summary, Ask echo, Model Evaluation — plus a DB/LLM status box. Every chart has a title, axis labels, legend, and date range; volume by category & source, sentiment trend, urgent queue by $ exposure, top themes by revenue-at-risk, and source-sliced cross-tabs.
+- **COMPANY** sees the analytics pages in the sidebar — Overview, Urgent Queue, Themes, Weekly Summary, Ask echo, Model Evaluation, **User Analytics** — plus a DB/LLM status box. Every chart has a title, axis labels, legend, and date range; volume by category & source, sentiment trend, urgent queue by $ exposure, top themes by revenue-at-risk, and source-sliced cross-tabs.
+- **User Analytics** (COMPANY only): who is actually using echo and what are they saying. A roster of every registered account (email, role, submission count, overall opinion, average urgency, last active), then a per-user drill-down — sentiment split, category focus, an opinion-over-time trend, money at stake from that user's negative feedback (Direct Exposure + the modeled Retention Risk range, reusing the same money engine as everywhere else), and their own submission history with full classification detail (an admin view, unlike the customer-facing Feed a feedback page, which never shows classification). Scoped strictly to feedback tied to a real account (`submitter_id IS NOT NULL`) — the 15k batch corpus has no owner and never appears here.
 - **UI house style:** no emojis and no em dashes in any user-facing string.
 
 ---
