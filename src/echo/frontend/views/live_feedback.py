@@ -1,94 +1,116 @@
-"""Live Feedback - submit one new item through the real pipeline (classify + embed + money).
+"""Feed a feedback - the customer-facing submission page (gen_pop only).
 
-The gen-pop single page: a submission form plus a read-only list of the user's
-own past submissions. Runs via st.navigation from app.py, which owns page config
-and the top-right logout; this script gates live submission on LLM availability
-by reading /health directly (it is not rendered as a status widget).
+Runs via st.navigation from app.py. Each submission is classified, embedded, and
+money-attached on the backend (the same pipeline the batch stages use), but the
+customer only ever sees a thank-you confirmation, never the internal analysis.
+
+Deliberately built from plain widgets (not st.form) so the rating field can
+react the moment the feedback type changes: reviews and surveys carry a rating,
+support tickets do not.
 """
 
 from __future__ import annotations
 
 import api_client
 import streamlit as st
-from common import money_metrics
+
+# Human-readable labels for the dropdowns; the values sent to the API stay the
+# machine enums the backend expects.
+SOURCE_LABELS = {"review": "Review", "ticket": "Support ticket", "survey": "Survey"}
+FULFILLMENT_LABELS = {
+    None: "Not sure",
+    "on_time_delivered": "Delivered on time",
+    "late_delivered": "Delivered late",
+    "shipped_not_delivered": "Shipped but never arrived",
+    "unavailable": "Item was unavailable",
+    "canceled": "Order was canceled",
+    "other": "Something else",
+}
 
 st.title("Feed a feedback")
-st.caption("Submit a new item and watch it go through the real pipeline: one LLM classification "
-           "call, an embedding, and money attached, the same code the batch pipeline uses.")
+st.caption("Tell us about your experience. Your feedback goes straight to the team that can act on it.")
 
+# Submission is classified on the backend, which needs an LLM key configured.
 try:
     _health = api_client.health()
 except Exception:  # noqa: BLE001
     _health = {"llm": False}
-
 if not _health.get("llm"):
-    st.warning("Live submission needs an OpenAI key configured on the backend (OPENAI_API_KEY).")
+    st.warning("Feedback submission is temporarily unavailable. Please try again later.")
     st.stop()
 
-with st.form("submit_feedback"):
-    text = st.text_area("Feedback text (Portuguese or English)", height=140,
-                        placeholder="Ex: O produto chegou com muito atraso e ninguem respondeu meus e-mails.")
-    source_type = st.selectbox("Source", ["ticket", "review", "survey"])
-    col1, col2 = st.columns(2)
-    with col1:
-        source_scale = st.selectbox("Score scale (optional)", [None, "star_1_5", "nps_0_10"],
-                                    format_func=lambda v: "none" if v is None else v)
-    with col2:
-        source_score = st.number_input("Score (optional)", min_value=0.0, max_value=10.0, value=0.0, step=1.0,
-                                       disabled=source_scale is None)
+# --- After a successful submit: show only a thank-you + a way to start over. ---
+if st.session_state.get("feedback_submitted"):
+    st.success("Your feedback has been submitted. Thank you.")
+    st.write("Our team will review it shortly.")
+    if st.button("Submit another feedback", type="primary"):
+        st.session_state.feedback_submitted = False
+        st.rerun()
 
-    st.markdown("**Order details** (optional). The money engine has nothing to compute from without "
-                "them; a real support agent would pull these from the linked order, here you type them in.")
-    col3, col4, col5 = st.columns(3)
-    with col3:
-        order_value = st.number_input("Order value (R$)", min_value=0.0, value=0.0, step=10.0)
-    with col4:
-        refund_amount = st.number_input("Refund / disputed amount (R$)", min_value=0.0, value=0.0, step=10.0)
-    with col5:
+# --- Otherwise: the submission form. ---
+else:
+    st.subheader("Share your feedback")
+    text = st.text_area("Your feedback", height=150,
+                        placeholder="Tell us what happened, what worked, or what did not.")
+    source_type = st.selectbox("Type of feedback", ["review", "ticket", "survey"],
+                               format_func=lambda v: SOURCE_LABELS[v])
+
+    # Reviews and surveys carry a rating; support tickets do not.
+    source_score = None
+    source_scale = None
+    if source_type == "review":
+        source_scale = "star_1_5"
+        source_score = st.slider("Your rating (stars)", 1, 5, 5)
+    elif source_type == "survey":
+        source_scale = "nps_0_10"
+        source_score = st.slider("How likely are you to recommend us? (0 to 10)", 0, 10, 8)
+    else:
+        st.caption("Support tickets do not carry a rating.")
+
+    with st.expander("Order details (optional)"):
+        col1, col2 = st.columns(2)
+        with col1:
+            order_value = st.number_input("Order value (R$)", min_value=0.0, value=0.0, step=10.0)
+        with col2:
+            refund_amount = st.number_input("Refund or disputed amount (R$)", min_value=0.0, value=0.0, step=10.0)
         fulfillment_outcome = st.selectbox(
-            "Fulfillment outcome", [None, "on_time_delivered", "late_delivered", "shipped_not_delivered",
-                                    "unavailable", "canceled", "other"],
-            format_func=lambda v: "unknown" if v is None else v)
-    submitted = st.form_submit_button("Submit")
+            "What happened to your order?",
+            [None, "on_time_delivered", "late_delivered", "shipped_not_delivered",
+             "unavailable", "canceled", "other"],
+            format_func=lambda v: FULFILLMENT_LABELS[v])
 
-if submitted:
-    if not text.strip():
-        st.error("Enter some feedback text first.")
-        st.stop()
-    try:
-        result = api_client.submit_feedback(
-            text=text, source_type=source_type,
-            source_score=(source_score if source_scale else None), source_scale=source_scale,
-            order_value=(order_value or None), refund_amount=(refund_amount or None),
-            fulfillment_outcome=fulfillment_outcome)
-    except Exception as e:  # noqa: BLE001
-        st.error(f"Submission failed: {e}")
-        st.stop()
+    if st.button("Submit feedback", type="primary"):
+        if not text.strip():
+            st.error("Please enter your feedback first.")
+            st.stop()
+        with st.spinner("Submitting your feedback..."):
+            try:
+                api_client.submit_feedback(
+                    text=text, source_type=source_type,
+                    source_score=(float(source_score) if source_scale else None),
+                    source_scale=source_scale,
+                    order_value=(order_value or None), refund_amount=(refund_amount or None),
+                    fulfillment_outcome=fulfillment_outcome)
+            except Exception:  # noqa: BLE001
+                st.error("Sorry, something went wrong submitting your feedback. Please try again.")
+                st.stop()
+        st.session_state.feedback_submitted = True
+        st.rerun()
 
-    a = result["analysis"]
-    st.success(f"Classified: **{a['category']}** · sentiment **{a['sentiment']}** · urgency **{a['urgency']}**"
-               + (" (urgency floor applied)" if a.get("floored") else ""))
-    st.write(a["rationale"])
-    if result.get("source_score_disagreement"):
-        st.warning("The model's sentiment disagrees with the given score; flagged for review.")
-
-    st.subheader("Money attached to this item")
-    money_metrics(result["money"]["direct_exposure"], result["money"]["retention"],
-                 result["money"]["revenue_at_risk"])
-    st.caption(f"item_id: {result['item_id']}")
-
-# View own: feedback users can review everything they have submitted.
+# --- The customer's own past submissions: their words + date, no analysis. ---
 st.divider()
 st.subheader("Your submissions")
 try:
     mine = api_client.list_feedback(limit=50)
-except Exception as e:  # noqa: BLE001
-    st.info(f"Couldn't load your submissions: {e}")
+except Exception:  # noqa: BLE001
+    mine = None
+if mine is None:
+    st.caption("Could not load your submissions right now.")
+elif mine["total"] == 0:
+    st.caption("You haven't submitted any feedback yet.")
 else:
-    if mine["total"] == 0:
-        st.caption("You haven't submitted any feedback yet.")
-    else:
-        st.caption(f"{mine['total']} submission(s).")
-        for it in mine["items"]:
-            snippet = it["text"][:120] + ("..." if len(it["text"]) > 120 else "")
-            st.markdown(f"- **{it['category']}** · {it['sentiment']} · urgency {it['urgency']}: {snippet}")
+    st.caption(f"{mine['total']} submission(s).")
+    for it in mine["items"]:
+        snippet = it["text"][:160] + ("..." if len(it["text"]) > 160 else "")
+        date = (it.get("created_at") or "")[:10]
+        st.markdown(f"- {snippet}" + (f"  \n  _{date}_" if date else ""))
