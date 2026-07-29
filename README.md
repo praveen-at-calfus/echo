@@ -122,6 +122,8 @@ echo is built on the **Olist Brazilian E-Commerce** public dataset (`olistbr/bra
 
 **Join path (enables the money engine):** `reviews → order_id → orders → customer_id → customers` (de-dup via `customer_unique_id`); `orders → order_items` (`price`, `freight_value`) and `→ order_payments` (`payment_value`) for real dollars; `→ products` for category. Refunds aren't a native field — inferred from canceled orders (`payment_value`).
 
+**As built:** the working corpus is **15,000 items** — 5,000 real reviews (MCMC-sampled to a representative score × category × length distribution) + 5,000 synthesized tickets + 5,000 synthesized surveys — loaded into Postgres, all classified, and (text-bearing items) embedded. `CORPUS.md` documents the build.
+
 **Getting the data:** download the Olist dataset from Kaggle (`olistbr/brazilian-ecommerce`) into `data/raw/` (the `data/` folder is gitignored — ~246 MB, CC BY-NC — not redistributed via this repo). Build outputs land in `data/processed/`; the LLM generation cache in `data/interim/`.
 
 ---
@@ -273,7 +275,7 @@ Mechanics: passwords are bcrypt-hashed; tokens are signed HS256 (PyJWT) with `JW
 
 **Streamlit** dashboard — a **thin client** that talks only to the API (never to the DB or LLM directly), organized as a single router entrypoint (`app.py` + `st.navigation`) with the content pages under `views/`:
 - **Landing / login screen** for signed-out visitors (no sidebar): the `echo` wordmark with animated side arc-waves, and a Login button that reveals login / create-account.
-- **GEN-POP** sees a single **Feed a feedback** page (submission form + their own past submissions) with a top-right logout and no status chrome.
+- **GEN-POP** sees a single **Feed a feedback** page with a top-right logout and no status chrome. The rating field adapts to the feedback type (Review shows a 1&ndash;5 star rating, Survey a 0&ndash;10 recommend score, Support ticket carries none), and all dropdowns use plain-language labels. On submit the customer sees only a thank-you confirmation (never the internal classification, sentiment, urgency, or money figures &mdash; those still run server-side for the company view), plus a **Submit another feedback** button that resets the form. Below the form is a read-only list of the customer's own past submissions (their text + date).
 - **COMPANY** sees the analytics pages in the sidebar — Overview, Urgent Queue, Themes, Weekly Summary, Ask echo, Model Evaluation — plus a DB/LLM status box. Every chart has a title, axis labels, legend, and date range; volume by category & source, sentiment trend, urgent queue by $ exposure, top themes by revenue-at-risk, and source-sliced cross-tabs.
 - **UI house style:** no emojis and no em dashes in any user-facing string.
 
