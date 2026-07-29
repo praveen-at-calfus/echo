@@ -23,7 +23,7 @@ if not _health.get("llm"):
     st.stop()
 
 question = st.text_input("Your question", placeholder="e.g. what are customers saying about late deliveries?")
-k = st.slider("How many feedback items to retrieve", 3, 20, 8)
+k = st.number_input("How many feedback items to retrieve", min_value=3, max_value=20, value=8, step=1)
 
 if st.button("Ask", type="primary") and question.strip():
     with st.spinner("Retrieving feedback and drafting an answer..."):

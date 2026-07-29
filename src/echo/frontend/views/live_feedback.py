@@ -27,6 +27,44 @@ FULFILLMENT_LABELS = {
     "other": "Something else",
 }
 
+_STAR_FILLED, _STAR_EMPTY = "★", "☆"  # a deliberate exception to the
+# no-decorative-symbols house style: a clickable star rating is the standard
+# e-commerce review control, not a decorative emoji.
+_STAR_CSS = """
+<style>
+/* Streamlit adds a "st-key-<key>" class to a keyed widget's wrapper div, so
+   this substring match reaches every review_star_rating_star_N button. */
+[class*="st-key-review_star_rating_star_"] button {
+    font-size: 1.6rem; line-height: 1; padding: 0.1rem 0; border: none; background: transparent;
+    color: #c9a227;
+}
+[class*="st-key-review_star_rating_star_"] button:hover {
+    background: transparent; color: #a5811d;
+}
+</style>
+"""
+
+
+def _star_rating_input(label: str, key: str) -> int:
+    """Five clickable stars. Clicking the Nth star sets the rating to N (0 = not
+    yet chosen). Mirrors a real e-commerce review widget rather than a slider."""
+    st.markdown(_STAR_CSS, unsafe_allow_html=True)
+    st.session_state.setdefault(key, 0)
+    current = st.session_state[key]
+
+    st.write(label)
+    cols = st.columns(5)
+    clicked = None
+    for i, col in enumerate(cols, start=1):
+        glyph = _STAR_FILLED if i <= current else _STAR_EMPTY
+        with col:
+            if st.button(glyph, key=f"{key}_star_{i}", use_container_width=True):
+                clicked = i
+    if clicked is not None and clicked != current:
+        st.session_state[key] = clicked
+        st.rerun()
+    return current
+
 st.title("Feed a feedback")
 st.caption("Tell us about your experience. Your feedback goes straight to the team that can act on it.")
 
@@ -60,10 +98,11 @@ else:
     source_scale = None
     if source_type == "review":
         source_scale = "star_1_5"
-        source_score = st.slider("Your rating (stars)", 1, 5, 5)
+        source_score = _star_rating_input("Your rating", key="review_star_rating")
     elif source_type == "survey":
         source_scale = "nps_0_10"
-        source_score = st.slider("How likely are you to recommend us? (0 to 10)", 0, 10, 8)
+        source_score = st.number_input("How likely are you to recommend us? (0 to 10)",
+                                       min_value=0, max_value=10, value=8, step=1)
     else:
         st.caption("Support tickets do not carry a rating.")
 
@@ -83,6 +122,9 @@ else:
         if not text.strip():
             st.error("Please enter your feedback first.")
             st.stop()
+        if source_type == "review" and not source_score:
+            st.error("Please select a star rating.")
+            st.stop()
         with st.spinner("Submitting your feedback..."):
             try:
                 api_client.submit_feedback(
@@ -94,6 +136,7 @@ else:
             except Exception:  # noqa: BLE001
                 st.error("Sorry, something went wrong submitting your feedback. Please try again.")
                 st.stop()
+        st.session_state.review_star_rating = 0  # reset the stars for the next submission
         st.session_state.feedback_submitted = True
         st.rerun()
 

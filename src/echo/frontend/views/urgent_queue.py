@@ -14,7 +14,7 @@ st.caption("Urgency at or above the floor, ranked by per-item Direct Exposure: t
            "dollar cost of that item.")
 
 week = st.text_input("Week (YYYY-MM-DD), blank for all-time", value="")
-limit = st.slider("How many items", 5, 100, 20)
+limit = st.number_input("How many items", min_value=5, max_value=100, value=20, step=1)
 
 try:
     data = api_client.urgent(week=week or None, limit=limit)
